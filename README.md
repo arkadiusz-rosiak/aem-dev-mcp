@@ -27,7 +27,21 @@ Model Context Protocol (MCP) is an open protocol that enables seamless communica
 
 ### Setup
 
-#### From sources 
+#### From npm (Recommended)
+
+1. Install the package globally:
+```bash
+npm install -g aem-dev-mcp-server
+```
+
+2. Create configuration file for your AEM instances:
+```bash
+touch ~/aem-instances.yaml
+```
+
+3. Configure your AEM instances in `~/aem-instances.yaml` (see configuration example below)
+
+#### From sources
 
 1. Clone the repository:
 ```bash
@@ -88,13 +102,29 @@ prod:
 
 For Claude Code users, you can configure this MCP server using these commands:
 
+**Using npm installation (Recommended):**
+```bash
+# Add the AEM MCP server to Claude Code
+npx aem-dev-mcp-server install
+
+# Or manually:
+claude-code mcp add aem-dev-mcp npx aem-dev-mcp-server
+
+# Set environment variable for configuration file location
+claude-code mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
+```
+
+**Using local build:**
 ```bash
 # Add the AEM MCP server to Claude Code
 claude-code mcp add aem-dev-mcp node /path/to/aem-dev-mcp/dist/server.js
 
 # Set environment variable for configuration file location
 claude-code mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
+```
 
+**Common commands:**
+```bash
 # List configured MCP servers
 claude-code mcp list
 
@@ -106,6 +136,22 @@ claude-code mcp remove aem-dev-mcp
 
 To use with Claude Desktop or other MCP-compatible AI assistants, add the server to your MCP configuration:
 
+**Using npm installation (Recommended):**
+```json
+{
+  "mcpServers": {
+    "aem-dev-mcp": {
+      "command": "npx",
+      "args": ["aem-dev-mcp-server"],
+      "env": {
+        "AEM_INSTANCES_CONFIG_PATH": "/path/to/aem-instances.yaml"
+      }
+    }
+  }
+}
+```
+
+**Using local build:**
 ```json
 {
   "mcpServers": {
@@ -129,6 +175,22 @@ For Warp terminal users, you can configure the MCP server through the Warp setti
 3. Navigate to "Features" → "AI Assistant"
 4. Add MCP server configuration:
 
+**Using npm installation (Recommended):**
+```json
+{
+  "mcpServers": {
+    "aem-dev-mcp": {
+      "command": "npx",
+      "args": ["aem-dev-mcp-server"],
+      "env": {
+        "AEM_INSTANCES_CONFIG_PATH": "/absolute/path/to/aem-instances.yaml"
+      }
+    }
+  }
+}
+```
+
+**Using local build:**
 ```json
 {
   "mcpServers": {

@@ -4,6 +4,14 @@
   "type": "module",
   "description": "AEM MCP server providing connectivity tools for Adobe Experience Manager® instances",
   "main": "dist/server.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arkadiusz-rosiak/aem-dev-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arkadiusz-rosiak/aem-dev-mcp/issues"
+  },
+  "homepage": "https://github.com/arkadiusz-rosiak/aem-dev-mcp#readme",
   "scripts": {
     "build": "tsc && tsc-alias",
     "start": "node dist/server.js",
