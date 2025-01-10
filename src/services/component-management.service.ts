@@ -11,7 +11,7 @@ import {
   TimeoutMs
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
+import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
 import { isOk, isAuthError } from '@/utils/http-status.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 import { createLogger } from '@/utils/logger.js';
@@ -19,11 +19,13 @@ import { createLogger } from '@/utils/logger.js';
 interface ComponentManagementConfig {
   readonly timeout: TimeoutMs;
   readonly maxBulkOperations: number;
+  readonly actionDelayMs: number;
 }
 
 const DEFAULT_CONFIG: ComponentManagementConfig = {
   timeout: TIMEOUTS.DEFAULT,
-  maxBulkOperations: 50
+  maxBulkOperations: 50,
+  actionDelayMs: 1000
 } as const;
 
 interface ComponentListResponse {
@@ -40,7 +42,7 @@ export class ComponentManagementService {
     this.#config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  async listComponents(instance: AEMInstance, stateFilter?: ComponentState, nameFilter?: string): Promise<OperationResult<OSGiComponent[]>> {
+  async listComponents(instance: AEMInstance, stateFilter?: ComponentState, nameFilter?: string): Promise<OperationResult<OSGiComponent[], OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -54,12 +56,12 @@ export class ComponentManagementService {
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required for component console (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Component console unavailable (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -67,7 +69,7 @@ export class ComponentManagementService {
 
       const componentData = response.data as ComponentListResponse;
       if (!componentData.data) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid component data received'),
           Date.now() - startTime
         );
@@ -76,24 +78,24 @@ export class ComponentManagementService {
       const components = this.#parseComponents(componentData.data);
       const filteredComponents = this.#filterComponents(components, stateFilter, nameFilter);
 
-      return createSuccessResult(filteredComponents, Date.now() - startTime);
+      return createOSGiSuccessResult(filteredComponents, Date.now() - startTime);
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async enableComponent(instance: AEMInstance, componentId: number): Promise<OperationResult<ComponentOperationResult>> {
+  async enableComponent(instance: AEMInstance, componentId: number): Promise<OperationResult<ComponentOperationResult, OSGiError>> {
     return this.#performComponentAction(instance, componentId, 'enable');
   }
 
-  async disableComponent(instance: AEMInstance, componentId: number): Promise<OperationResult<ComponentOperationResult>> {
+  async disableComponent(instance: AEMInstance, componentId: number): Promise<OperationResult<ComponentOperationResult, OSGiError>> {
     return this.#performComponentAction(instance, componentId, 'disable');
   }
 
-  async getComponentDetails(instance: AEMInstance, componentId: number): Promise<OperationResult<OSGiComponent>> {
+  async getComponentDetails(instance: AEMInstance, componentId: number): Promise<OperationResult<OSGiComponent, OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -107,18 +109,18 @@ export class ComponentManagementService {
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         if (response.status === 404) {
-          return createFailureResult(
-            this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Component ${componentId} not found`),
+          return createOSGiFailureResult(
+            this.#createError(OSGI_ERROR_CODES.COMPONENT_NOT_FOUND, `Component ${componentId} not found`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Component details unavailable (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -126,7 +128,7 @@ export class ComponentManagementService {
 
       const componentData = response.data;
       if (!this.#isValidComponentData(componentData)) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid component data received'),
           Date.now() - startTime
         );
@@ -134,15 +136,15 @@ export class ComponentManagementService {
 
       const component = this.#parseComponent(componentData);
       if (!component) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Failed to parse component data'),
           Date.now() - startTime
         );
       }
 
-      return createSuccessResult(component, Date.now() - startTime);
+      return createOSGiSuccessResult(component, Date.now() - startTime);
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
@@ -153,18 +155,18 @@ export class ComponentManagementService {
     instance: AEMInstance,
     componentIds: readonly number[],
     action: 'enable' | 'disable'
-  ): Promise<OperationResult<BulkOperationResult<ComponentOperationResult>>> {
+  ): Promise<OperationResult<BulkOperationResult<ComponentOperationResult>, OSGiError>> {
     const startTime = Date.now();
 
     if (componentIds.length === 0) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'No component IDs provided'),
         Date.now() - startTime
       );
     }
 
     if (componentIds.length > this.#config.maxBulkOperations) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Too many components. Maximum ${this.#config.maxBulkOperations} allowed`),
         Date.now() - startTime
       );
@@ -191,7 +193,9 @@ export class ComponentManagementService {
       } else {
         const error = result.status === 'rejected' 
           ? this.#classifyError(result.reason)
-          : (result.value.error as OSGiError);
+          : result.status === 'fulfilled' && !result.value.success
+            ? result.value.error
+            : this.#classifyError(new Error('Unknown operation failure'));
         
         results.push({
           success: false,
@@ -211,10 +215,10 @@ export class ComponentManagementService {
       failureCount
     };
 
-    return createSuccessResult(bulkResult, Date.now() - startTime);
+    return createOSGiSuccessResult(bulkResult, Date.now() - startTime);
   }
 
-  async findComponentsByName(instance: AEMInstance, componentNames: readonly string[]): Promise<OperationResult<OSGiComponent[]>> {
+  async findComponentsByName(instance: AEMInstance, componentNames: readonly string[]): Promise<OperationResult<OSGiComponent[], OSGiError>> {
     const listResult = await this.listComponents(instance);
     if (!listResult.success) {
       return listResult;
@@ -227,26 +231,26 @@ export class ComponentManagementService {
       )
     );
 
-    return createSuccessResult(foundComponents, 0);
+    return createOSGiSuccessResult(foundComponents, 0);
   }
 
   async #performComponentAction(
     instance: AEMInstance,
     componentId: number,
     action: 'enable' | 'disable'
-  ): Promise<OperationResult<ComponentOperationResult>> {
+  ): Promise<OperationResult<ComponentOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
       const currentComponent = await this.#getComponentById(instance, componentId);
       if (!currentComponent.success) {
-        return createFailureResult(currentComponent.error, Date.now() - startTime);
+        return createOSGiFailureResult(currentComponent.error, Date.now() - startTime);
       }
 
       if (action === 'disable' && currentComponent.data.state === 'active') {
         const dependencyCheck = await this.#checkComponentDependencies(instance, componentId);
         if (!dependencyCheck.canDisable) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(
               OSGI_ERROR_CODES.COMPONENT_DEPENDENCY_ACTIVE,
               `Cannot disable component: ${dependencyCheck.reason}`
@@ -264,65 +268,64 @@ export class ComponentManagementService {
         `/system/console/components/${componentId}`,
         'POST',
         formData.toString(),
-        this.#config.timeout,
-        { 'Content-Type': 'application/x-www-form-urlencoded' }
+        this.#config.timeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         if (response.status === 404) {
-          return createFailureResult(
-            this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Component ${componentId} not found`),
+          return createOSGiFailureResult(
+            this.#createError(OSGI_ERROR_CODES.COMPONENT_NOT_FOUND, `Component ${componentId} not found`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Component ${action} failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, this.#config.actionDelayMs));
 
       const updatedComponent = await this.#getComponentById(instance, componentId);
       if (!updatedComponent.success) {
-        return createFailureResult(updatedComponent.error, Date.now() - startTime);
+        return createOSGiFailureResult(updatedComponent.error, Date.now() - startTime);
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         component: updatedComponent.data,
         message: `Component ${action} completed successfully`
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async #getComponentById(instance: AEMInstance, componentId: number): Promise<OperationResult<OSGiComponent>> {
+  async #getComponentById(instance: AEMInstance, componentId: number): Promise<OperationResult<OSGiComponent, OSGiError>> {
     const listResult = await this.listComponents(instance);
     if (!listResult.success) {
-      return createFailureResult(listResult.error, 0);
+      return createOSGiFailureResult(listResult.error, 0);
     }
 
     const component = listResult.data.find(c => c.id === componentId);
     if (!component) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Component ${componentId} not found`),
         0
       );
     }
 
-    return createSuccessResult(component, 0);
+    return createOSGiSuccessResult(component, 0);
   }
 
   async #checkComponentDependencies(instance: AEMInstance, componentId: number): Promise<{ canDisable: boolean; reason?: string }> {
@@ -364,7 +367,7 @@ export class ComponentManagementService {
     return {
       id: item.id,
       name: item.name || '',
-      state: isComponentState(item.state) ? item.state : 'unsatisfied',
+      state: item.state && isComponentState(item.state) ? item.state : 'unsatisfied',
       pid: item.pid,
       properties: item.props || {}
     };

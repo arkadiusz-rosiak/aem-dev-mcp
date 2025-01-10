@@ -8,10 +8,11 @@ import {
   OSGiError,
   OSGI_ERROR_CODES,
   isConfigProperty,
+  isConfigPropertyType,
   TimeoutMs
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
+import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
 import { isOk, isAuthError } from '@/utils/http-status.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 import { createLogger } from '@/utils/logger.js';
@@ -38,7 +39,7 @@ export class ConfigurationManagementService {
     this.#config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  async listConfigurations(instance: AEMInstance, pidFilter?: string): Promise<OperationResult<OSGiConfiguration[]>> {
+  async listConfigurations(instance: AEMInstance, pidFilter?: string): Promise<OperationResult<OSGiConfiguration[], OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -52,12 +53,12 @@ export class ConfigurationManagementService {
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required for configuration console (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration console unavailable (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -65,7 +66,7 @@ export class ConfigurationManagementService {
 
       const configData = response.data as ConfigListResponse;
       if (!configData.configurations) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid configuration data received'),
           Date.now() - startTime
         );
@@ -74,16 +75,16 @@ export class ConfigurationManagementService {
       const configurations = this.#parseConfigurations(configData.configurations);
       const filteredConfigurations = this.#filterConfigurations(configurations, pidFilter);
 
-      return createSuccessResult(filteredConfigurations, Date.now() - startTime);
+      return createOSGiSuccessResult(filteredConfigurations, Date.now() - startTime);
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async getConfiguration(instance: AEMInstance, pid: string): Promise<OperationResult<OSGiConfiguration>> {
+  async getConfiguration(instance: AEMInstance, pid: string): Promise<OperationResult<OSGiConfiguration, OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -97,18 +98,18 @@ export class ConfigurationManagementService {
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         if (response.status === 404) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Configuration ${pid} not found`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unavailable (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -118,28 +119,28 @@ export class ConfigurationManagementService {
       const configuration = this.#parseConfiguration(configData);
       
       if (!configuration) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Failed to parse configuration data'),
           Date.now() - startTime
         );
       }
 
-      return createSuccessResult(configuration, Date.now() - startTime);
+      return createOSGiSuccessResult(configuration, Date.now() - startTime);
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async createConfiguration(instance: AEMInstance, request: Omit<ConfigurationRequest, 'instanceAlias'>): Promise<OperationResult<ConfigurationOperationResult>> {
+  async createConfiguration(instance: AEMInstance, request: Omit<ConfigurationRequest, 'instanceAlias'>): Promise<OperationResult<ConfigurationOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
       const validationResult = this.#validateConfigurationRequest(request);
       if (!validationResult.valid) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
           Date.now() - startTime
         );
@@ -152,18 +153,17 @@ export class ConfigurationManagementService {
         '/system/console/configMgr/[Temporary PID replaced by real PID upon save]',
         'POST',
         formData,
-        this.#config.timeout,
-        { 'Content-Type': 'application/x-www-form-urlencoded' }
+        this.#config.timeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration creation failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -173,30 +173,30 @@ export class ConfigurationManagementService {
 
       const createdConfig = await this.getConfiguration(instance, request.pid);
       if (!createdConfig.success) {
-        return createFailureResult(createdConfig.error, Date.now() - startTime);
+        return createOSGiFailureResult(createdConfig.error, Date.now() - startTime);
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         configuration: createdConfig.data,
         message: 'Configuration created successfully'
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async updateConfiguration(instance: AEMInstance, request: Omit<ConfigurationRequest, 'instanceAlias'>): Promise<OperationResult<ConfigurationOperationResult>> {
+  async updateConfiguration(instance: AEMInstance, request: Omit<ConfigurationRequest, 'instanceAlias'>): Promise<OperationResult<ConfigurationOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
       const validationResult = this.#validateConfigurationRequest(request);
       if (!validationResult.valid) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
           Date.now() - startTime
         );
@@ -204,7 +204,7 @@ export class ConfigurationManagementService {
 
       const existingConfig = await this.getConfiguration(instance, request.pid);
       if (!existingConfig.success) {
-        return createFailureResult(existingConfig.error, Date.now() - startTime);
+        return createOSGiFailureResult(existingConfig.error, Date.now() - startTime);
       }
 
       const formData = this.#buildConfigurationFormData(request);
@@ -214,18 +214,17 @@ export class ConfigurationManagementService {
         `/system/console/configMgr/${encodeURIComponent(request.pid)}`,
         'POST',
         formData,
-        this.#config.timeout,
-        { 'Content-Type': 'application/x-www-form-urlencoded' }
+        this.#config.timeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration update failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -235,30 +234,30 @@ export class ConfigurationManagementService {
 
       const updatedConfig = await this.getConfiguration(instance, request.pid);
       if (!updatedConfig.success) {
-        return createFailureResult(updatedConfig.error, Date.now() - startTime);
+        return createOSGiFailureResult(updatedConfig.error, Date.now() - startTime);
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         configuration: updatedConfig.data,
         message: 'Configuration updated successfully'
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async deleteConfiguration(instance: AEMInstance, pid: string): Promise<OperationResult<ConfigurationOperationResult>> {
+  async deleteConfiguration(instance: AEMInstance, pid: string): Promise<OperationResult<ConfigurationOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
       const existingConfig = await this.getConfiguration(instance, pid);
       if (!existingConfig.success) {
-        return createFailureResult(existingConfig.error, Date.now() - startTime);
+        return createOSGiFailureResult(existingConfig.error, Date.now() - startTime);
       }
 
       const formData = new URLSearchParams();
@@ -269,43 +268,42 @@ export class ConfigurationManagementService {
         `/system/console/configMgr/${encodeURIComponent(pid)}`,
         'POST',
         formData.toString(),
-        this.#config.timeout,
-        { 'Content-Type': 'application/x-www-form-urlencoded' }
+        this.#config.timeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration deletion failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         message: 'Configuration deleted successfully'
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async unbindConfiguration(instance: AEMInstance, pid: string, bundleLocation?: string): Promise<OperationResult<ConfigurationOperationResult>> {
+  async unbindConfiguration(instance: AEMInstance, pid: string, bundleLocation?: string): Promise<OperationResult<ConfigurationOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
       const existingConfig = await this.getConfiguration(instance, pid);
       if (!existingConfig.success) {
-        return createFailureResult(existingConfig.error, Date.now() - startTime);
+        return createOSGiFailureResult(existingConfig.error, Date.now() - startTime);
       }
 
       const formData = new URLSearchParams();
@@ -320,18 +318,17 @@ export class ConfigurationManagementService {
         `/system/console/configMgr/${encodeURIComponent(pid)}`,
         'POST',
         formData.toString(),
-        this.#config.timeout,
-        { 'Content-Type': 'application/x-www-form-urlencoded' }
+        this.#config.timeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unbind failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -341,17 +338,17 @@ export class ConfigurationManagementService {
 
       const updatedConfig = await this.getConfiguration(instance, pid);
       if (!updatedConfig.success) {
-        return createFailureResult(updatedConfig.error, Date.now() - startTime);
+        return createOSGiFailureResult(updatedConfig.error, Date.now() - startTime);
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         configuration: updatedConfig.data,
         message: 'Configuration unbound successfully'
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
@@ -398,7 +395,7 @@ export class ConfigurationManagementService {
           properties[key] = {
             name: key,
             value: typedProp.value,
-            type: typedProp.type || 'String',
+            type: (typedProp.type && isConfigPropertyType(typedProp.type)) ? typedProp.type : 'String',
             cardinality: typedProp.cardinality,
             description: typedProp.description
           };

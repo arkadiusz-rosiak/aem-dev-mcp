@@ -12,7 +12,7 @@ import {
   TimeoutMs
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
+import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
 import { isOk, isAuthError } from '@/utils/http-status.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 import { createLogger } from '@/utils/logger.js';
@@ -21,12 +21,20 @@ interface BundleManagementConfig {
   readonly timeout: TimeoutMs;
   readonly installTimeout: TimeoutMs;
   readonly maxBulkOperations: number;
+  readonly maxBundleSize: number;
+  readonly actionDelayMs: number;
+  readonly installDelayMs: number;
+  readonly restartDelayMs: number;
 }
 
 const DEFAULT_CONFIG: BundleManagementConfig = {
   timeout: TIMEOUTS.DEFAULT,
-  installTimeout: TIMEOUTS.BUNDLE_INSTALL || TIMEOUTS.DEFAULT * 3,
-  maxBulkOperations: 50
+  installTimeout: TIMEOUTS.BUNDLE_INSTALL ?? TIMEOUTS.DEFAULT * 3,
+  maxBulkOperations: 50,
+  maxBundleSize: 100 * 1024 * 1024,
+  actionDelayMs: 1000,
+  installDelayMs: 2000,
+  restartDelayMs: 1000
 } as const;
 
 interface BundleListResponse {
@@ -44,7 +52,7 @@ export class BundleManagementService {
     this.#config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  async listBundles(instance: AEMInstance, stateFilter?: BundleState, nameFilter?: string): Promise<OperationResult<OSGiBundle[]>> {
+  async listBundles(instance: AEMInstance, stateFilter?: BundleState, nameFilter?: string): Promise<OperationResult<OSGiBundle[], OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -58,12 +66,12 @@ export class BundleManagementService {
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required for bundle console (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Bundle console unavailable (HTTP ${response.status})`),
           Date.now() - startTime
         );
@@ -71,7 +79,7 @@ export class BundleManagementService {
 
       const bundleData = response.data as BundleListResponse;
       if (!bundleData.data) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid bundle data received'),
           Date.now() - startTime
         );
@@ -80,59 +88,59 @@ export class BundleManagementService {
       const bundles = this.#parseBundles(bundleData.data);
       const filteredBundles = this.#filterBundles(bundles, stateFilter, nameFilter);
 
-      return createSuccessResult(filteredBundles, Date.now() - startTime);
+      return createOSGiSuccessResult(filteredBundles, Date.now() - startTime);
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async startBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult>> {
+  async startBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     return this.#performBundleAction(instance, bundleId, 'start');
   }
 
-  async stopBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult>> {
+  async stopBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     return this.#performBundleAction(instance, bundleId, 'stop');
   }
 
-  async restartBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult>> {
+  async restartBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     const stopResult = await this.#performBundleAction(instance, bundleId, 'stop');
     if (!stopResult.success) {
-      return createFailureResult(stopResult.error, Date.now() - startTime);
+      return createOSGiFailureResult(stopResult.error, Date.now() - startTime);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, this.#config.restartDelayMs));
 
     const startResult = await this.#performBundleAction(instance, bundleId, 'start');
     if (!startResult.success) {
-      return createFailureResult(startResult.error, Date.now() - startTime);
+      return createOSGiFailureResult(startResult.error, Date.now() - startTime);
     }
 
-    return createSuccessResult({
+    return createOSGiSuccessResult({
       success: true,
       bundle: startResult.data.bundle,
       message: 'Bundle restarted successfully'
     }, Date.now() - startTime);
   }
 
-  async uninstallBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult>> {
+  async uninstallBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     return this.#performBundleAction(instance, bundleId, 'uninstall');
   }
 
-  async refreshBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult>> {
+  async refreshBundle(instance: AEMInstance, bundleId: number): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     return this.#performBundleAction(instance, bundleId, 'refresh');
   }
 
-  async installBundle(instance: AEMInstance, request: Omit<BundleInstallRequest, 'instanceAlias'>): Promise<OperationResult<BundleOperationResult>> {
+  async installBundle(instance: AEMInstance, request: Omit<BundleInstallRequest, 'instanceAlias'>): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
       if (!request.bundleUrl && !request.bundleFile) {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, 'Either bundleUrl or bundleFile must be provided'),
           Date.now() - startTime
         );
@@ -142,6 +150,14 @@ export class BundleManagementService {
       const headers: Record<string, string> = {};
 
       if (request.bundleFile) {
+        const validationResult = this.#validateBundleFile(request.bundleFile);
+        if (!validationResult.valid) {
+          return createOSGiFailureResult(
+            this.#createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, validationResult.error || 'Invalid bundle file'),
+            Date.now() - startTime
+          );
+        }
+
         formData = new FormData();
         formData.append('bundlefile', new Blob([request.bundleFile]), 'bundle.jar');
         if (request.startLevel) {
@@ -169,7 +185,7 @@ export class BundleManagementService {
         formData = params.toString();
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
       } else {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, 'Invalid bundle installation request'),
           Date.now() - startTime
         );
@@ -180,49 +196,51 @@ export class BundleManagementService {
         '/system/console/bundles',
         'POST',
         formData,
-        this.#config.installTimeout,
-        headers
+        this.#config.installTimeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.BUNDLE_RESOLUTION_FAILED, `Bundle installation failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, this.#config.installDelayMs));
 
       const bundleListResult = await this.listBundles(instance);
       if (!bundleListResult.success) {
-        return createFailureResult(bundleListResult.error, Date.now() - startTime);
+        return createOSGiFailureResult(bundleListResult.error, Date.now() - startTime);
       }
 
       const installedBundle = bundleListResult.data
-        .sort((a, b) => b.id - a.id)[0];
+        .reduce((latest, current) => 
+          !latest || current.id > latest.id ? current : latest, 
+          undefined as OSGiBundle | undefined
+        );
 
       // Check if bundle is in Installed state (missing dependencies)
       if (installedBundle && installedBundle.state === 'Installed') {
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.MISSING_DEPENDENCY, `Bundle installed but has missing dependencies: ${installedBundle.symbolicName}`),
           Date.now() - startTime
         );
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         bundle: installedBundle,
         message: 'Bundle installed successfully'
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
@@ -233,18 +251,18 @@ export class BundleManagementService {
     instance: AEMInstance,
     bundleIds: readonly number[],
     action: 'start' | 'stop' | 'restart' | 'uninstall' | 'refresh'
-  ): Promise<OperationResult<BulkOperationResult<BundleOperationResult>>> {
+  ): Promise<OperationResult<BulkOperationResult<BundleOperationResult>, OSGiError>> {
     const startTime = Date.now();
 
     if (bundleIds.length === 0) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'No bundle IDs provided'),
         Date.now() - startTime
       );
     }
 
     if (bundleIds.length > this.#config.maxBulkOperations) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Too many bundles. Maximum ${this.#config.maxBulkOperations} allowed`),
         Date.now() - startTime
       );
@@ -267,7 +285,9 @@ export class BundleManagementService {
       } else {
         const error = result.status === 'rejected' 
           ? this.#classifyError(result.reason)
-          : (result.value.error as OSGiError);
+          : result.status === 'fulfilled' && !result.value.success
+            ? result.value.error
+            : this.#classifyError(new Error('Unknown operation failure'));
         
         results.push({
           success: false,
@@ -287,14 +307,14 @@ export class BundleManagementService {
       failureCount
     };
 
-    return createSuccessResult(bulkResult, Date.now() - startTime);
+    return createOSGiSuccessResult(bulkResult, Date.now() - startTime);
   }
 
   async #executeBundleOperation(
     instance: AEMInstance,
     bundleId: number,
     action: 'start' | 'stop' | 'restart' | 'uninstall' | 'refresh'
-  ): Promise<OperationResult<BundleOperationResult>> {
+  ): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     switch (action) {
       case 'start':
         return this.startBundle(instance, bundleId);
@@ -313,7 +333,7 @@ export class BundleManagementService {
     instance: AEMInstance,
     bundleId: number,
     action: 'start' | 'stop' | 'uninstall' | 'refresh'
-  ): Promise<OperationResult<BundleOperationResult>> {
+  ): Promise<OperationResult<BundleOperationResult, OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -325,65 +345,64 @@ export class BundleManagementService {
         `/system/console/bundles/${bundleId}`,
         'POST',
         formData.toString(),
-        this.#config.timeout,
-        { 'Content-Type': 'application/x-www-form-urlencoded' }
+        this.#config.timeout
       );
 
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         if (response.status === 404) {
-          return createFailureResult(
+          return createOSGiFailureResult(
             this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${bundleId} not found`),
             Date.now() - startTime
           );
         }
-        return createFailureResult(
+        return createOSGiFailureResult(
           this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Bundle ${action} failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, this.#config.actionDelayMs));
 
       const bundleResult = await this.#getBundleById(instance, bundleId);
       if (!bundleResult.success) {
-        return createFailureResult(bundleResult.error, Date.now() - startTime);
+        return createOSGiFailureResult(bundleResult.error, Date.now() - startTime);
       }
 
-      return createSuccessResult({
+      return createOSGiSuccessResult({
         success: true,
         bundle: bundleResult.data,
         message: `Bundle ${action} completed successfully`
       }, Date.now() - startTime);
 
     } catch (error) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#classifyError(error),
         Date.now() - startTime
       );
     }
   }
 
-  async #getBundleById(instance: AEMInstance, bundleId: number): Promise<OperationResult<OSGiBundle>> {
+  async #getBundleById(instance: AEMInstance, bundleId: number): Promise<OperationResult<OSGiBundle, OSGiError>> {
     const listResult = await this.listBundles(instance);
     if (!listResult.success) {
-      return createFailureResult(listResult.error, 0);
+      return createOSGiFailureResult(listResult.error, 0);
     }
 
     const bundle = listResult.data.find(b => b.id === bundleId);
     if (!bundle) {
-      return createFailureResult(
+      return createOSGiFailureResult(
         this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${bundleId} not found`),
         0
       );
     }
 
-    return createSuccessResult(bundle, 0);
+    return createOSGiSuccessResult(bundle, 0);
   }
 
   #parseBundles(bundleData: readonly unknown[]): OSGiBundle[] {
@@ -397,7 +416,7 @@ export class BundleManagementService {
             name: item.name || '',
             symbolicName: item.symbolicName || '',
             version: item.version || '',
-            state: isBundleState(item.state) ? item.state : 'Installed',
+            state: item.state && isBundleState(item.state) ? item.state : 'Installed',
             category: item.category,
             stateRaw: item.stateRaw || 0,
             fragment: Boolean(item.fragment),
@@ -474,5 +493,28 @@ export class BundleManagementService {
     
     const message = error instanceof Error ? error.message : String(error);
     return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, message, { originalError: error });
+  }
+
+  #validateBundleFile(bundleFile: Buffer): { valid: boolean; error?: string } {
+    if (bundleFile.length === 0) {
+      return { valid: false, error: 'Bundle file is empty' };
+    }
+
+    if (bundleFile.length > this.#config.maxBundleSize) {
+      return { 
+        valid: false, 
+        error: `Bundle file too large: ${bundleFile.length} bytes (max: ${this.#config.maxBundleSize} bytes)` 
+      };
+    }
+
+    const header = bundleFile.subarray(0, 4);
+    const zipSignature = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
+    const jarSignature = Buffer.from([0x50, 0x4B, 0x07, 0x08]);
+    
+    if (!header.equals(zipSignature) && !header.equals(jarSignature) && !header.subarray(0, 2).equals(Buffer.from([0x50, 0x4B]))) {
+      return { valid: false, error: 'Bundle file must be a valid JAR/ZIP archive' };
+    }
+
+    return { valid: true };
   }
 }
