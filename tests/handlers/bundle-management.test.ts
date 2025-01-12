@@ -3,11 +3,15 @@ import {
   handleBundleStart,
   handleBundleStop,
   handleBundleRefresh,
+  handleBundleRestart,
+  handleBundleDetails,
   bundleListTool,
   bundleStartTool,
   bundleStopTool,
   bundleRefreshTool,
-  bundleUninstallTool
+  bundleUninstallTool,
+  bundleRestartTool,
+  bundleDetailsTool
 } from '@/handlers/bundle-management.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
@@ -15,7 +19,9 @@ import { AemHttpClient } from '@/services/http-client.js';
 import { 
   AEMInstance, 
   OSGiBundle,
-  BundleOperationResult
+  OSGiBundleDetails,
+  BundleOperationResult,
+  BundleDetailsResult
 } from '@/types/index.js';
 
 jest.mock('@/services/alias-resolver.js');
@@ -72,6 +78,49 @@ describe('Bundle Management Handlers', () => {
     message: 'Bundle operation completed successfully'
   };
 
+  const mockBundleDetails: OSGiBundleDetails = {
+    id: 123,
+    name: 'Test Detailed Bundle',
+    symbolicName: 'test.detailed.bundle',
+    version: '1.0.0',
+    state: 'Active',
+    stateRaw: 32,
+    fragment: false,
+    imported: false,
+    category: 'test',
+    description: 'A test bundle with detailed information',
+    vendor: 'Test Vendor',
+    location: 'file:/opt/aem/bundles/test.jar',
+    lastModified: 1640995200000,
+    startLevel: 20,
+    exportedPackages: [
+      { name: 'com.test.api', version: '1.0.0', used: true },
+      { name: 'com.test.util', version: '1.0.0', used: false }
+    ],
+    importedPackages: [
+      { name: 'org.slf4j', version: '1.7.0', optional: false, resolved: true, exportingBundle: 45 }
+    ],
+    requiredBundles: [
+      { symbolicName: 'org.slf4j.api', version: '1.7.0', optional: false, resolved: true }
+    ],
+    providedServices: [
+      { id: 234, interfaces: ['com.test.api.TestService'], properties: { 'service.ranking': 100 } }
+    ],
+    usedServices: [
+      { id: 123, interfaces: ['org.slf4j.LoggerFactory'], providingBundle: 45 }
+    ],
+    bundleHeaders: {
+      'Bundle-Description': 'A test bundle with detailed information',
+      'Bundle-Vendor': 'Test Vendor'
+    }
+  };
+
+  const mockBundleDetailsResult: BundleDetailsResult = {
+    success: true,
+    bundleDetails: mockBundleDetails,
+    message: 'Bundle details retrieved successfully'
+  };
+
 
   beforeEach(() => {
     mockResolver = new AliasResolver('') as jest.Mocked<AliasResolver>;
@@ -111,6 +160,22 @@ describe('Bundle Management Handlers', () => {
     it('should have correct bundle uninstall tool definition', () => {
       expect(bundleUninstallTool.name).toBe('aem_bundle_uninstall');
       expect(bundleUninstallTool.description).toContain('Uninstall OSGi bundles');
+    });
+
+    it('should have correct bundle restart tool definition', () => {
+      expect(bundleRestartTool.name).toBe('aem_bundle_restart');
+      expect(bundleRestartTool.description).toContain('Restart OSGi bundles');
+      expect(bundleRestartTool.inputSchema.properties).toHaveProperty('bundleId');
+      expect(bundleRestartTool.inputSchema.properties).toHaveProperty('symbolicName');
+    });
+
+    it('should have correct bundle details tool definition', () => {
+      expect(bundleDetailsTool.name).toBe('aem_bundle_details');
+      expect(bundleDetailsTool.description).toContain('Get detailed information about OSGi bundles');
+      expect(bundleDetailsTool.inputSchema.properties).toHaveProperty('bundleId');
+      expect(bundleDetailsTool.inputSchema.properties).toHaveProperty('symbolicName');
+      expect(bundleDetailsTool.inputSchema.properties).toHaveProperty('aliases');
+      expect(bundleDetailsTool.inputSchema.properties).toHaveProperty('instances');
     });
 
   });
@@ -357,6 +422,284 @@ describe('Bundle Management Handlers', () => {
   });
 
 
+  describe('handleBundleRestart', () => {
+    it('should handle bundle restart with bundleId', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        bundleId: 123
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: { ...mockBundleOperationResult, message: 'Bundle restarted successfully' },
+          duration: 500
+        }
+      ]);
+
+      const result = await handleBundleRestart(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('restart');
+      expect(responseData.summary.successful).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(true);
+      expect(responseData.results['http://test-author.example.com:4502'].message).toBe('Bundle restarted successfully');
+    });
+
+    it('should handle bundle restart with symbolicName', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        symbolicName: 'com.example.test.bundle'
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: { ...mockBundleOperationResult, message: 'Bundle restarted successfully' },
+          duration: 500
+        }
+      ]);
+
+      const result = await handleBundleRestart(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('restart');
+      expect(responseData.summary.successful).toBe(1);
+    });
+
+    it('should handle restart validation errors', async () => {
+      const invalidArgs = { 
+        instances: [testInstances[0]]
+        // Missing both bundleId and symbolicName
+      };
+
+      const result = await handleBundleRestart(invalidArgs, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Bundle restart failed');
+      expect(result.content[0].text).toContain('Validation failed');
+    });
+
+    it('should handle restart operation failures', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        bundleId: 999
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: false,
+          error: 'Bundle restart failed',
+          duration: 300
+        }
+      ]);
+
+      const result = await handleBundleRestart(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.summary.failed).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
+    });
+  });
+
+  describe('handleBundleDetails', () => {
+    it('should handle bundle details with bundleId', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        bundleId: 123
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockBundleDetailsResult,
+          duration: 400
+        }
+      ]);
+
+      const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('bundle_details');
+      expect(responseData.summary.successful).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(true);
+      expect(responseData.results['http://test-author.example.com:4502'].bundleDetails).toBeDefined();
+      expect(responseData.results['http://test-author.example.com:4502'].bundleDetails.id).toBe(123);
+      expect(responseData.results['http://test-author.example.com:4502'].bundleDetails.name).toBe('Test Detailed Bundle');
+    });
+
+    it('should handle bundle details with symbolicName', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        symbolicName: 'test.detailed.bundle'
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockBundleDetailsResult,
+          duration: 400
+        }
+      ]);
+
+      const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('bundle_details');
+      expect(responseData.summary.successful).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].bundleDetails.symbolicName).toBe('test.detailed.bundle');
+    });
+
+    it('should handle bundle details validation errors', async () => {
+      const invalidArgs = { 
+        instances: [testInstances[0]]
+        // Missing both bundleId and symbolicName
+      };
+
+      const result = await handleBundleDetails(invalidArgs, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Bundle details retrieval failed');
+      expect(result.content[0].text).toContain('Validation failed');
+    });
+
+    it('should handle bundle not found for details', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        bundleId: 999
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: false,
+          error: 'Bundle 999 not found',
+          duration: 200
+        }
+      ]);
+
+      const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.summary.failed).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
+    });
+
+    it('should handle multiple instances for bundle details', async () => {
+      const args = { 
+        instances: testInstances, 
+        bundleId: 123
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockBundleDetailsResult,
+          duration: 400
+        },
+        {
+          instanceUrl: 'http://test-publish.example.com:4503',
+          success: true,
+          data: mockBundleDetailsResult,
+          duration: 450
+        }
+      ]);
+
+      const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.summary.total).toBe(2);
+      expect(responseData.summary.successful).toBe(2);
+      expect(responseData.summary.failed).toBe(0);
+      expect(Object.keys(responseData.results)).toHaveLength(2);
+    });
+
+    it('should handle partial failures in bundle details', async () => {
+      const args = { 
+        instances: testInstances, 
+        bundleId: 123
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockBundleDetailsResult,
+          duration: 400
+        },
+        {
+          instanceUrl: 'http://test-publish.example.com:4503',
+          success: false,
+          error: 'Connection timeout',
+          duration: 5000
+        }
+      ]);
+
+      const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.summary.total).toBe(2);
+      expect(responseData.summary.successful).toBe(1);
+      expect(responseData.summary.failed).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(true);
+      expect(responseData.results['http://test-publish.example.com:4503'].success).toBe(false);
+    });
+
+    it('should handle detailed bundle information structure', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        bundleId: 123
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockBundleDetailsResult,
+          duration: 400
+        }
+      ]);
+
+      const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      const bundleDetails = responseData.results['http://test-author.example.com:4502'].bundleDetails;
+      
+      expect(bundleDetails.description).toBe('A test bundle with detailed information');
+      expect(bundleDetails.vendor).toBe('Test Vendor');
+      expect(bundleDetails.exportedPackages).toHaveLength(2);
+      expect(bundleDetails.importedPackages).toHaveLength(1);
+      expect(bundleDetails.providedServices).toHaveLength(1);
+      expect(bundleDetails.usedServices).toHaveLength(1);
+      expect(bundleDetails.bundleHeaders).toBeDefined();
+      expect(bundleDetails.startLevel).toBe(20);
+    });
+  });
+
   describe('Edge Cases', () => {
     it('should handle unexpected errors gracefully', async () => {
       const args = { instances: [testInstances[0]] };
@@ -389,6 +732,20 @@ describe('Bundle Management Handlers', () => {
       const responseData = JSON.parse(result.content[0].text!);
       expect(responseData.summary.failed).toBe(1);
       expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
+    });
+
+    it('should handle network timeouts in new handlers', async () => {
+      const args = { instances: [testInstances[0]], bundleId: 123 };
+      
+      mockExecutor.executeOnInstances.mockRejectedValueOnce(new Error('Network timeout'));
+
+      const resultRestart = await handleBundleRestart(args, mockResolver, mockExecutor, mockClient);
+      expect(resultRestart.isError).toBe(true);
+      expect(resultRestart.content[0].text).toContain('Bundle restart failed');
+
+      const resultDetails = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
+      expect(resultDetails.isError).toBe(true);
+      expect(resultDetails.content[0].text).toContain('Bundle details retrieval failed');
     });
   });
 });

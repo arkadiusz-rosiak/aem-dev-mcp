@@ -10,11 +10,15 @@ import {
   handleBundleStop,
   handleBundleRefresh,
   handleBundleUninstall,
+  handleBundleRestart,
+  handleBundleDetails,
   bundleListTool,
   bundleStartTool,
   bundleStopTool,
   bundleRefreshTool,
-  bundleUninstallTool
+  bundleUninstallTool,
+  bundleRestartTool,
+  bundleDetailsTool
 } from './bundle-management.js';
 import { 
   handleComponentList, 
@@ -56,6 +60,8 @@ export function registerHandlers(server: Server, configPath: string): void {
         bundleStopTool,
         bundleRefreshTool,
         bundleUninstallTool,
+        bundleRestartTool,
+        bundleDetailsTool,
         componentListTool,
         componentEnableTool,
         componentDisableTool,
@@ -93,6 +99,12 @@ export function registerHandlers(server: Server, configPath: string): void {
           break;
         case 'aem_bundle_uninstall':
           result = await handleBundleUninstall(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_bundle_restart':
+          result = await handleBundleRestart(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_bundle_details':
+          result = await handleBundleDetails(args, aliasResolver, parallelExecutor, httpClient);
           break;
         case 'aem_component_list':
           result = await handleComponentList(args, aliasResolver, parallelExecutor, httpClient);

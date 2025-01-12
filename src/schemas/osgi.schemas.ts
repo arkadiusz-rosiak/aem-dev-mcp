@@ -82,6 +82,17 @@ export const BundleIdentifierSchema = InstanceSelectionSchema.extend({
   }
 );
 
+export const BundleDetailsSchema = InstanceSelectionSchema.extend({
+  bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
+  symbolicName: z.string().optional()
+}).refine(
+  (data) => data.bundleId || data.symbolicName,
+  {
+    message: "Either 'bundleId' or 'symbolicName' must be provided",
+    path: ['bundleId', 'symbolicName']
+  }
+);
+
 export const BundleInstallSchema = InstanceSelectionSchema.extend({
   bundleUrl: z.string().url('Invalid bundle URL').optional(),
   bundleFile: z.instanceof(Buffer).optional(),
@@ -166,6 +177,7 @@ export const ConfigurationUnbindSchema = InstanceSelectionSchema.extend({
 export type BundleListInput = z.infer<typeof BundleListSchema>;
 export type BundleOperationInput = z.infer<typeof BundleOperationSchema>;
 export type BundleIdentifierInput = z.infer<typeof BundleIdentifierSchema>;
+export type BundleDetailsInput = z.infer<typeof BundleDetailsSchema>;
 export type BundleInstallInput = z.infer<typeof BundleInstallSchema>;
 export type ComponentListInput = z.infer<typeof ComponentListSchema>;
 export type ComponentOperationInput = z.infer<typeof ComponentOperationSchema>;

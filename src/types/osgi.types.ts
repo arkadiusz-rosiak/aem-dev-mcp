@@ -56,6 +56,49 @@ export interface OSGiBundle {
   readonly imported?: boolean;
 }
 
+export interface OSGiBundleDetails extends OSGiBundle {
+  readonly description?: string;
+  readonly vendor?: string;
+  readonly location?: string;
+  readonly lastModified?: number;
+  readonly stateHistory?: {
+    readonly timestamp: number;
+    readonly previousState: BundleState;
+    readonly currentState: BundleState;
+    readonly reason?: string;
+  }[];
+  readonly exportedPackages?: {
+    readonly name: string;
+    readonly version: string;
+    readonly used: boolean;
+  }[];
+  readonly importedPackages?: {
+    readonly name: string;
+    readonly version: string;
+    readonly optional: boolean;
+    readonly resolved: boolean;
+    readonly exportingBundle?: number;
+  }[];
+  readonly requiredBundles?: {
+    readonly symbolicName: string;
+    readonly version: string;
+    readonly optional: boolean;
+    readonly resolved: boolean;
+  }[];
+  readonly providedServices?: {
+    readonly id: number;
+    readonly interfaces: string[];
+    readonly properties: Record<string, any>;
+  }[];
+  readonly usedServices?: {
+    readonly id: number;
+    readonly interfaces: string[];
+    readonly providingBundle: number;
+  }[];
+  readonly bundleHeaders?: Record<string, string>;
+  readonly startLevel?: number;
+}
+
 export interface OSGiComponent {
   readonly id: number;
   readonly name: string;
@@ -121,6 +164,13 @@ export interface ConfigurationUnbindRequest {
 export interface BundleOperationResult {
   readonly success: boolean;
   readonly bundle?: OSGiBundle;
+  readonly message: string;
+  readonly error?: OSGiError;
+}
+
+export interface BundleDetailsResult {
+  readonly success: boolean;
+  readonly bundleDetails?: OSGiBundleDetails;
   readonly message: string;
   readonly error?: OSGiError;
 }

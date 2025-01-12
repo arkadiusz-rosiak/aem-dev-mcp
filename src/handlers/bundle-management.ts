@@ -22,8 +22,10 @@ import { z } from 'zod';
 import { 
   BundleListSchema, 
   BundleIdentifierSchema,
+  BundleDetailsSchema,
   type BundleListInput,
-  type BundleIdentifierInput
+  type BundleIdentifierInput,
+  type BundleDetailsInput
 } from '@/schemas/osgi.schemas.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 
@@ -133,6 +135,47 @@ export const bundleUninstallTool = {
   inputSchema: baseBundleOperationSchema
 };
 
+export const bundleRestartTool = {
+  name: 'aem_bundle_restart',
+  description: 'Restart OSGi bundles on AEM instances',
+  inputSchema: baseBundleOperationSchema
+};
+
+export const bundleDetailsTool = {
+  name: 'aem_bundle_details',
+  description: 'Get detailed information about OSGi bundles from AEM instances',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      aliases: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Array of instance aliases'
+      },
+      instances: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            url: { type: 'string' },
+            username: { type: 'string' },
+            password: { type: 'string' }
+          },
+          required: ['url', 'username', 'password']
+        },
+        description: 'Array of AEM instances'
+      },
+      bundleId: {
+        type: 'integer',
+        description: 'Bundle ID to get details for'
+      },
+      symbolicName: {
+        type: 'string',
+        description: 'Bundle symbolic name to get details for'
+      }
+    }
+  }
+};
 
 export async function handleBundleList(
   args: unknown,
@@ -232,6 +275,132 @@ export async function handleBundleUninstall(
   return await handleSpecificBundleOperation(args, resolver, executor, client, 'uninstall');
 }
 
+export async function handleBundleRestart(
+  args: unknown,
+  resolver: AliasResolver,
+  executor: ParallelExecutor,
+  client: AemHttpClient
+): Promise<MCPToolResult> {
+  const logger = createLogger();
+  const requestId = createRequestId(uuidv4());
+  
+  try {
+    const validatedInput = BundleIdentifierSchema.parse(args);
+    const config = createBundleConfig();
+    
+    const bundleService = new BundleManagementService(client);
+    
+    const instances = await resolveInstances(validatedInput, resolver);
+    
+    if (!isNonEmptyArray(instances)) {
+      throw new Error('No instances to check after resolution');
+    }
+
+    const results = await executor.executeOnInstances(
+      instances,
+      async (instance: AEMInstance) => {
+        if (validatedInput.bundleId) {
+          return await bundleService.restartBundle(instance, validatedInput.bundleId);
+        } else if (validatedInput.symbolicName) {
+          return await executeBundleRestartByName(bundleService, instance, validatedInput.symbolicName);
+        } else {
+          throw new Error('Either bundleId or symbolicName must be provided');
+        }
+      },
+      {
+        maxConcurrency: config.maxConcurrency,
+        timeout: config.timeout
+      }
+    );
+    
+    const response = buildBundleOperationResponse(requestId, results, instances, 'restart');
+    
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(response, null, 2)
+      }],
+      isError: false
+    };
+    
+  } catch (error) {
+    logger.error('Bundle restart failed', { error, requestId });
+    
+    const errorMessage = error instanceof z.ZodError 
+      ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+      : error instanceof Error 
+        ? error.message 
+        : String(error);
+    
+    return createErrorResponse(
+      `Bundle restart failed: ${errorMessage}`,
+      requestId
+    );
+  }
+}
+
+export async function handleBundleDetails(
+  args: unknown,
+  resolver: AliasResolver,
+  executor: ParallelExecutor,
+  client: AemHttpClient
+): Promise<MCPToolResult> {
+  const logger = createLogger();
+  const requestId = createRequestId(uuidv4());
+  
+  try {
+    const validatedInput = BundleDetailsSchema.parse(args);
+    const config = createBundleConfig();
+    
+    const bundleService = new BundleManagementService(client);
+    
+    const instances = await resolveInstances(validatedInput, resolver);
+    
+    if (!isNonEmptyArray(instances)) {
+      throw new Error('No instances to check after resolution');
+    }
+
+    const results = await executor.executeOnInstances(
+      instances,
+      async (instance: AEMInstance) => {
+        return await bundleService.getBundleDetails(
+          instance,
+          validatedInput.bundleId,
+          validatedInput.symbolicName
+        );
+      },
+      {
+        maxConcurrency: config.maxConcurrency,
+        timeout: config.timeout
+      }
+    );
+    
+    const response = buildBundleDetailsResponse(requestId, results, instances);
+    
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(response, null, 2)
+      }],
+      isError: false
+    };
+    
+  } catch (error) {
+    logger.error('Bundle details retrieval failed', { error, requestId });
+    
+    const errorMessage = error instanceof z.ZodError 
+      ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+      : error instanceof Error 
+        ? error.message 
+        : String(error);
+    
+    return createErrorResponse(
+      `Bundle details retrieval failed: ${errorMessage}`,
+      requestId
+    );
+  }
+}
+
 async function handleSpecificBundleOperation(
   args: unknown,
   resolver: AliasResolver,
@@ -299,7 +468,7 @@ async function handleSpecificBundleOperation(
 
 
 async function resolveInstances(
-  input: BundleListInput | BundleIdentifierInput,
+  input: BundleListInput | BundleIdentifierInput | BundleDetailsInput,
   resolver: AliasResolver
 ): Promise<AEMInstance[]> {
   const instances: AEMInstance[] = [];
@@ -362,6 +531,26 @@ async function executeBundleActionByName(
   }
   
   return await executeBundleAction(service, instance, bundle.id, action);
+}
+
+async function executeBundleRestartByName(
+  service: BundleManagementService,
+  instance: AEMInstance,
+  symbolicName: string
+): Promise<BundleOperationResult> {
+  // First find the bundle by symbolic name
+  const listResult = await service.listBundles(instance);
+  if (!listResult.success) {
+    return { success: false, message: `Failed to list bundles: ${listResult.error.message}` };
+  }
+  
+  const bundle = listResult.data.find(b => b.symbolicName === symbolicName);
+  if (!bundle) {
+    return { success: false, message: `Bundle with symbolic name '${symbolicName}' not found` };
+  }
+  
+  const restartResult = await service.restartBundle(instance, bundle.id);
+  return restartResult.success ? restartResult.data : { success: false, message: restartResult.error.message };
 }
 
 function buildBundleListResponse(requestId: RequestId, results: any[], instances: AEMInstance[]) {
@@ -433,3 +622,39 @@ function buildBundleOperationResponse(requestId: RequestId, results: any[], inst
   return response;
 }
 
+function buildBundleDetailsResponse(requestId: RequestId, results: any[], instances: AEMInstance[]) {
+  const response = {
+    requestId,
+    operation: 'bundle_details',
+    summary: {
+      total: instances.length,
+      successful: 0,
+      failed: 0
+    },
+    results: {} as Record<string, any>,
+    metadata: {
+      timestamp: new Date().toISOString(),
+      totalInstances: instances.length
+    }
+  };
+
+  results.forEach((result, index) => {
+    const instance = instances[index];
+    if (result.success) {
+      response.summary.successful++;
+      response.results[instance.url] = {
+        success: true,
+        bundleDetails: result.data.bundleDetails,
+        message: result.data.message
+      };
+    } else {
+      response.summary.failed++;
+      response.results[instance.url] = {
+        success: false,
+        error: result.error || 'Unknown error'
+      };
+    }
+  });
+
+  return response;
+}

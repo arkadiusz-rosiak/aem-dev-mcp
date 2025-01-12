@@ -2,7 +2,9 @@ import {
   AEMInstance,
   OperationResult,
   OSGiBundle,
+  OSGiBundleDetails,
   BundleOperationResult,
+  BundleDetailsResult,
   BundleInstallRequest,
   OSGiError,
   OSGI_ERROR_CODES,
@@ -75,6 +77,88 @@ export class BundleManagementService extends BaseOSGiService {
       const filteredBundles = this.#filterBundles(bundles, stateFilter, nameFilter);
 
       return createOSGiSuccessResult(filteredBundles, Date.now() - startTime);
+    } catch (error) {
+      return createOSGiFailureResult(
+        this.classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
+  async getBundleDetails(instance: AEMInstance, bundleId?: number, symbolicName?: string): Promise<OperationResult<BundleDetailsResult, OSGiError>> {
+    const startTime = Date.now();
+    
+    try {
+      // First find the bundle if symbolicName is provided
+      let targetBundleId = bundleId;
+      if (!targetBundleId && symbolicName) {
+        const bundleResult = await this.#getBundleBySymbolicName(instance, symbolicName);
+        if (!bundleResult.success) {
+          return createOSGiFailureResult(bundleResult.error, Date.now() - startTime);
+        }
+        targetBundleId = bundleResult.data.id;
+      }
+      
+      if (!targetBundleId) {
+        return createOSGiFailureResult(
+          this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, 'Bundle ID or symbolic name must be provided'),
+          Date.now() - startTime
+        );
+      }
+      
+      // Get detailed bundle information from multiple endpoints
+      const [bundleInfo, bundleHeaders, bundleServices, bundleWires] = await Promise.allSettled([
+        this.makeAuthenticatedRequest(instance, `/system/console/bundles/${targetBundleId}.json`, 'GET'),
+        this.makeAuthenticatedRequest(instance, `/system/console/bundles/${targetBundleId}/headers.json`, 'GET'),
+        this.makeAuthenticatedRequest(instance, `/system/console/bundles/${targetBundleId}/services.json`, 'GET'),
+        this.makeAuthenticatedRequest(instance, `/system/console/bundles/${targetBundleId}/wires.json`, 'GET')
+      ]);
+      
+      // Parse the main bundle information
+      let bundleDetails: OSGiBundleDetails;
+      
+      if (bundleInfo.status === 'fulfilled' && bundleInfo.value.success) {
+        const data = bundleInfo.value.data;
+        bundleDetails = this.#parseBundleDetails(data, 
+          bundleHeaders.status === 'fulfilled' && bundleHeaders.value.success ? bundleHeaders.value.data : null,
+          bundleServices.status === 'fulfilled' && bundleServices.value.success ? bundleServices.value.data : null,
+          bundleWires.status === 'fulfilled' && bundleWires.value.success ? bundleWires.value.data : null
+        );
+      } else {
+        // Fallback to basic bundle info from list
+        const basicBundleResult = await this.#getBundleById(instance, targetBundleId);
+        if (!basicBundleResult.success) {
+          return createOSGiFailureResult(
+            this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${targetBundleId} not found`),
+            Date.now() - startTime
+          );
+        }
+        
+        bundleDetails = {
+          ...basicBundleResult.data,
+          description: undefined,
+          vendor: undefined,
+          location: undefined,
+          lastModified: undefined,
+          stateHistory: undefined,
+          exportedPackages: undefined,
+          importedPackages: undefined,
+          requiredBundles: undefined,
+          providedServices: undefined,
+          usedServices: undefined,
+          bundleHeaders: undefined,
+          startLevel: undefined
+        };
+      }
+      
+      const result: BundleDetailsResult = {
+        success: true,
+        bundleDetails,
+        message: 'Bundle details retrieved successfully'
+      };
+      
+      return createOSGiSuccessResult(result, Date.now() - startTime);
+      
     } catch (error) {
       return createOSGiFailureResult(
         this.classifyError(error),
@@ -364,5 +448,146 @@ export class BundleManagementService extends BaseOSGiService {
     }
 
     return { valid: true };
+  }
+
+  async #getBundleBySymbolicName(instance: AEMInstance, symbolicName: string): Promise<OperationResult<OSGiBundle, OSGiError>> {
+    const listResult = await this.listBundles(instance);
+    if (!listResult.success) {
+      return createOSGiFailureResult(listResult.error, 0);
+    }
+
+    const bundle = listResult.data.find(b => b.symbolicName === symbolicName);
+    if (!bundle) {
+      return createOSGiFailureResult(
+        this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle with symbolic name '${symbolicName}' not found`),
+        0
+      );
+    }
+
+    return createOSGiSuccessResult(bundle, 0);
+  }
+
+  #parseBundleDetails(
+    bundleData: any,
+    headersData: any,
+    servicesData: any,
+    wiresData: any
+  ): OSGiBundleDetails {
+    // Parse basic bundle information
+    const basicBundle: OSGiBundle = {
+      id: bundleData.bundleId || bundleData.id,
+      name: bundleData.name || bundleData.bundleName || '',
+      symbolicName: bundleData.symbolicName || '',
+      version: bundleData.version || '0.0.0',
+      state: this.#parseState(bundleData.state || bundleData.stateRaw),
+      category: bundleData.category,
+      stateRaw: bundleData.stateRaw || 0,
+      fragment: bundleData.fragment || false,
+      imported: bundleData.imported || false
+    };
+
+    // Parse detailed information
+    const details: OSGiBundleDetails = {
+      ...basicBundle,
+      description: bundleData.description || headersData?.['Bundle-Description'],
+      vendor: bundleData.vendor || headersData?.['Bundle-Vendor'],
+      location: bundleData.location || bundleData.bundleLocation,
+      lastModified: bundleData.lastModified ? new Date(bundleData.lastModified).getTime() : undefined,
+      bundleHeaders: headersData || undefined,
+      startLevel: bundleData.startLevel || bundleData.bundleStartLevel,
+      
+      // Parse exported packages
+      exportedPackages: this.#parseExportedPackages(bundleData.exportedPackages || wiresData?.exports),
+      
+      // Parse imported packages  
+      importedPackages: this.#parseImportedPackages(bundleData.importedPackages || wiresData?.imports),
+      
+      // Parse required bundles
+      requiredBundles: this.#parseRequiredBundles(bundleData.requiredBundles || wiresData?.requires),
+      
+      // Parse services
+      providedServices: this.#parseProvidedServices(servicesData?.provided || bundleData.providedServices),
+      usedServices: this.#parseUsedServices(servicesData?.used || bundleData.usedServices),
+      
+      // State history is not typically available from AEM console
+      stateHistory: undefined
+    };
+
+    return details;
+  }
+
+  #parseState(state: any): BundleState {
+    if (typeof state === 'string' && isBundleState(state)) {
+      return state;
+    }
+    
+    // Map numeric states to string states
+    const stateNum = typeof state === 'number' ? state : 0;
+    const stateMap: Record<number, BundleState> = {
+      1: 'Uninstalled',
+      2: 'Installed', 
+      4: 'Resolved',
+      8: 'Starting',
+      16: 'Stopping',
+      32: 'Active',
+      64: 'Fragment'
+    };
+    
+    return stateMap[stateNum] || 'Installed';
+  }
+
+  #parseExportedPackages(packages: any[]): OSGiBundleDetails['exportedPackages'] {
+    if (!Array.isArray(packages)) return undefined;
+    
+    return packages.map(pkg => ({
+      name: pkg.name || pkg.packageName || '',
+      version: pkg.version || '0.0.0',
+      used: pkg.used || pkg.inUse || false
+    }));
+  }
+
+  #parseImportedPackages(packages: any[]): OSGiBundleDetails['importedPackages'] {
+    if (!Array.isArray(packages)) return undefined;
+    
+    return packages.map(pkg => ({
+      name: pkg.name || pkg.packageName || '',
+      version: pkg.version || '0.0.0', 
+      optional: pkg.optional || false,
+      resolved: pkg.resolved || pkg.satisfied || false,
+      exportingBundle: pkg.exportingBundle || pkg.providingBundle
+    }));
+  }
+
+  #parseRequiredBundles(bundles: any[]): OSGiBundleDetails['requiredBundles'] {
+    if (!Array.isArray(bundles)) return undefined;
+    
+    return bundles.map(bundle => ({
+      symbolicName: bundle.symbolicName || bundle.name || '',
+      version: bundle.version || '0.0.0',
+      optional: bundle.optional || false,
+      resolved: bundle.resolved || bundle.satisfied || false
+    }));
+  }
+
+  #parseProvidedServices(services: any[]): OSGiBundleDetails['providedServices'] {
+    if (!Array.isArray(services)) return undefined;
+    
+    return services.map(service => ({
+      id: service.id || service.serviceId || 0,
+      interfaces: Array.isArray(service.interfaces) ? service.interfaces : 
+                  Array.isArray(service.objectClass) ? service.objectClass : [],
+      properties: service.properties || service.serviceProperties || {}
+    }));
+  }
+
+  #parseUsedServices(services: any[]): OSGiBundleDetails['usedServices'] {
+    if (!Array.isArray(services)) return undefined;
+    
+    return services.map(service => ({
+      id: service.id || service.serviceId || 0,
+      interfaces: Array.isArray(service.interfaces) ? service.interfaces : 
+                  Array.isArray(service.objectClass) ? service.objectClass : [],
+      providingBundle: service.providingBundle || service.bundleId || 0
+    }));
   }
 }

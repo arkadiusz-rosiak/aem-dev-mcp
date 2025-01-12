@@ -517,6 +517,265 @@ describe('BundleManagementService', () => {
   });
 
 
+  describe('getBundleDetails', () => {
+    const mockBundleDetailResponse = {
+      bundleId: 123,
+      name: 'Test Detailed Bundle',
+      symbolicName: 'test.detailed.bundle',
+      version: '1.0.0',
+      state: 'Active',
+      stateRaw: 32,
+      description: 'A test bundle with detailed information',
+      vendor: 'Test Vendor',
+      location: 'file:/opt/aem/bundles/test.jar',
+      lastModified: 1640995200000,
+      startLevel: 20,
+      exportedPackages: [
+        { name: 'com.test.api', version: '1.0.0', used: true },
+        { name: 'com.test.util', version: '1.0.0', used: false }
+      ],
+      importedPackages: [
+        { name: 'org.slf4j', version: '1.7.0', optional: false, resolved: true, exportingBundle: 45 }
+      ],
+      requiredBundles: [
+        { symbolicName: 'org.slf4j.api', version: '1.7.0', optional: false, resolved: true }
+      ],
+      providedServices: [
+        { id: 234, interfaces: ['com.test.api.TestService'], properties: { 'service.ranking': 100 } }
+      ],
+      usedServices: [
+        { id: 123, interfaces: ['org.slf4j.LoggerFactory'], providingBundle: 45 }
+      ]
+    };
+
+    const mockBundleHeadersResponse = {
+      'Bundle-Description': 'A test bundle with detailed information',
+      'Bundle-Vendor': 'Test Vendor',
+      'Bundle-Version': '1.0.0',
+      'Bundle-SymbolicName': 'test.detailed.bundle'
+    };
+
+    it('should get bundle details by ID successfully', async () => {
+      const bundleId = 123;
+      
+      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
+        .mockResolvedValueOnce({ success: true, data: mockBundleDetailResponse })
+        .mockResolvedValueOnce({ success: true, data: mockBundleHeadersResponse })
+        .mockResolvedValueOnce({ success: true, data: { provided: mockBundleDetailResponse.providedServices, used: mockBundleDetailResponse.usedServices } })
+        .mockResolvedValueOnce({ success: true, data: { exports: mockBundleDetailResponse.exportedPackages, imports: mockBundleDetailResponse.importedPackages } });
+
+      const result = await bundleService.getBundleDetails(testInstance, bundleId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.success).toBe(true);
+        expect(result.data.bundleDetails?.id).toBe(bundleId);
+        expect(result.data.bundleDetails?.name).toBe('Test Detailed Bundle');
+        expect(result.data.bundleDetails?.description).toBe('A test bundle with detailed information');
+        expect(result.data.bundleDetails?.vendor).toBe('Test Vendor');
+        expect(result.data.bundleDetails?.exportedPackages).toHaveLength(2);
+        expect(result.data.bundleDetails?.importedPackages).toHaveLength(1);
+        expect(result.data.bundleDetails?.providedServices).toHaveLength(1);
+        expect(result.data.bundleDetails?.usedServices).toHaveLength(1);
+      }
+      
+      expect(bundleService['makeAuthenticatedRequest']).toHaveBeenCalledWith(
+        testInstance,
+        `/system/console/bundles/${bundleId}.json`,
+        'GET'
+      );
+    });
+
+    it('should get bundle details by symbolic name successfully', async () => {
+      const symbolicName = 'test.detailed.bundle';
+      
+      jest.spyOn(bundleService, 'listBundles').mockResolvedValue({
+        success: true,
+        data: [{
+          id: 123,
+          name: 'Test Bundle',
+          symbolicName,
+          version: '1.0.0',
+          state: 'Active' as BundleState,
+          stateRaw: 32,
+          fragment: false,
+          imported: false,
+          category: 'test'
+        }],
+        duration: 100
+      });
+
+      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
+        .mockResolvedValueOnce({ success: true, data: mockBundleDetailResponse })
+        .mockResolvedValueOnce({ success: true, data: mockBundleHeadersResponse })
+        .mockResolvedValueOnce({ success: true, data: { provided: [], used: [] } })
+        .mockResolvedValueOnce({ success: true, data: { exports: [], imports: [] } });
+
+      const result = await bundleService.getBundleDetails(testInstance, undefined, symbolicName);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.bundleDetails?.symbolicName).toBe(symbolicName);
+      }
+    });
+
+    it('should handle bundle not found by symbolic name', async () => {
+      const symbolicName = 'nonexistent.bundle';
+      
+      jest.spyOn(bundleService, 'listBundles').mockResolvedValue({
+        success: true,
+        data: [],
+        duration: 100
+      });
+
+      const result = await bundleService.getBundleDetails(testInstance, undefined, symbolicName);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND);
+        expect(result.error.message).toContain('not found');
+      }
+    });
+
+    it('should handle fallback to basic bundle info when detailed endpoints fail', async () => {
+      const bundleId = 123;
+      
+      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
+        .mockResolvedValueOnce({ success: false, error: { code: OSGI_ERROR_CODES.OPERATION_FAILED, message: 'Endpoint failed' } })
+        .mockResolvedValueOnce({ success: false, error: { code: OSGI_ERROR_CODES.OPERATION_FAILED, message: 'Endpoint failed' } })
+        .mockResolvedValueOnce({ success: false, error: { code: OSGI_ERROR_CODES.OPERATION_FAILED, message: 'Endpoint failed' } })
+        .mockResolvedValueOnce({ success: false, error: { code: OSGI_ERROR_CODES.OPERATION_FAILED, message: 'Endpoint failed' } });
+
+      jest.spyOn(bundleService, 'listBundles').mockResolvedValue({
+        success: true,
+        data: [{
+          id: bundleId,
+          name: 'Basic Bundle',
+          symbolicName: 'test.basic.bundle',
+          version: '1.0.0',
+          state: 'Active' as BundleState,
+          stateRaw: 32,
+          fragment: false,
+          imported: false,
+          category: 'test'
+        }],
+        duration: 100
+      });
+
+      const result = await bundleService.getBundleDetails(testInstance, bundleId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.bundleDetails?.id).toBe(bundleId);
+        expect(result.data.bundleDetails?.name).toBe('Basic Bundle');
+        expect(result.data.bundleDetails?.description).toBeUndefined();
+        expect(result.data.bundleDetails?.exportedPackages).toBeUndefined();
+      }
+    });
+
+    it('should handle bundle not found for details', async () => {
+      const bundleId = 999;
+      
+      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
+        .mockResolvedValue({ success: false, error: { code: OSGI_ERROR_CODES.OPERATION_FAILED, message: 'Failed' } });
+
+      jest.spyOn(bundleService, 'listBundles').mockResolvedValue({
+        success: true,
+        data: [],
+        duration: 100
+      });
+
+      const result = await bundleService.getBundleDetails(testInstance, bundleId);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND);
+        expect(result.error.message).toBe(`Bundle ${bundleId} not found`);
+      }
+    });
+
+    it('should require either bundleId or symbolicName', async () => {
+      const result = await bundleService.getBundleDetails(testInstance);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND);
+        expect(result.error.message).toBe('Bundle ID or symbolic name must be provided');
+      }
+    });
+
+
+    it('should parse exported packages correctly', async () => {
+      const bundleId = 123;
+      const responseWithPackages = {
+        ...mockBundleDetailResponse,
+        exportedPackages: [
+          { name: 'com.test.package1', version: '2.0.0', used: true },
+          { packageName: 'com.test.package2', version: '1.5.0', inUse: false }
+        ]
+      };
+      
+      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
+        .mockResolvedValueOnce({ success: true, data: responseWithPackages })
+        .mockResolvedValueOnce({ success: true, data: {} })
+        .mockResolvedValueOnce({ success: true, data: {} })
+        .mockResolvedValueOnce({ success: true, data: {} });
+
+      const result = await bundleService.getBundleDetails(testInstance, bundleId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.bundleDetails?.exportedPackages).toHaveLength(2);
+        expect(result.data.bundleDetails?.exportedPackages?.[0]).toEqual({
+          name: 'com.test.package1',
+          version: '2.0.0',
+          used: true
+        });
+        expect(result.data.bundleDetails?.exportedPackages?.[1]).toEqual({
+          name: 'com.test.package2',
+          version: '1.5.0',
+          used: false
+        });
+      }
+    });
+
+    it('should parse imported packages correctly', async () => {
+      const bundleId = 123;
+      const responseWithImports = {
+        ...mockBundleDetailResponse,
+        importedPackages: [
+          { 
+            name: 'org.apache.commons', 
+            version: '3.0.0', 
+            optional: true, 
+            resolved: true, 
+            exportingBundle: 67 
+          }
+        ]
+      };
+      
+      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
+        .mockResolvedValueOnce({ success: true, data: responseWithImports })
+        .mockResolvedValueOnce({ success: true, data: {} })
+        .mockResolvedValueOnce({ success: true, data: {} })
+        .mockResolvedValueOnce({ success: true, data: {} });
+
+      const result = await bundleService.getBundleDetails(testInstance, bundleId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.bundleDetails?.importedPackages).toHaveLength(1);
+        expect(result.data.bundleDetails?.importedPackages?.[0]).toEqual({
+          name: 'org.apache.commons',
+          version: '3.0.0',
+          optional: true,
+          resolved: true,
+          exportingBundle: 67
+        });
+      }
+    });
+  });
+
   describe('custom configuration', () => {
     it('should use custom configuration when provided', () => {
       const customConfig = {
