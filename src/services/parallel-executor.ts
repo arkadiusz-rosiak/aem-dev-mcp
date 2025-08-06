@@ -1,5 +1,6 @@
 import { AEMInstance, InstanceOperationResult, ParallelExecutionOptions } from '@/types.js';
 import { Semaphore } from '@/utils/semaphore.js';
+import { v4 as uuidv4 } from 'uuid';
 
 interface PendingRequest<T> {
   promise: Promise<T>;
@@ -52,7 +53,7 @@ export class ParallelExecutor {
     options: ParallelExecutionOptions = {}
   ): Promise<InstanceOperationResult<T>[]> {
     const { 
-      requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      requestId = uuidv4(),
       deduplicationKey
     } = options;
     

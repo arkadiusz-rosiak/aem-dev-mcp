@@ -4,6 +4,7 @@ import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { createErrorResponse, logError } from '@/utils/errors.js';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 
 // Input validation schema
 const HealthCheckSchema = z.object({
@@ -25,7 +26,7 @@ export async function handleHealthCheck(
   client: AemHttpClient
 ): Promise<MCPToolResult> {
   // Generate unique request ID for tracking
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const requestId = uuidv4();
   
   try {
     // 1. Validate arguments
