@@ -1,6 +1,6 @@
 import { Agent } from 'node:https';
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { AEMInstance, HealthStatus } from '../types.js';
+import { AEMInstance, HealthStatus } from '@/types.js';
 
 export class AemHttpClient {
   private agents: Map<string, Agent>;

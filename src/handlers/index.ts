@@ -1,9 +1,9 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { AliasResolver } from '../services/alias-resolver.js';
-import { ParallelExecutor } from '../services/parallel-executor.js';
-import { AemHttpClient } from '../services/http-client.js';
+import { AliasResolver } from '@/services/alias-resolver.js';
+import { ParallelExecutor } from '@/services/parallel-executor.js';
+import { AemHttpClient } from '@/services/http-client.js';
 import { handleHealthCheck, healthCheckTool } from './health-check.js';
-import { logError } from '../utils/errors.js';
+import { logError } from '@/utils/errors.js';
 
 export function registerHandlers(server: Server, configPath: string): void {
   // Initialize shared services
@@ -13,7 +13,7 @@ export function registerHandlers(server: Server, configPath: string): void {
   const httpClient = new AemHttpClient();
   
   // Register health check handler
-  server.setRequestHandler('tools/call', async (request) => {
+  server.setRequestHandler({ method: 'tools/call' } as any, async (request: any) => {
     try {
       if (request.params.name === 'aem_health_check') {
         return await handleHealthCheck(
@@ -35,7 +35,7 @@ export function registerHandlers(server: Server, configPath: string): void {
   });
   
   // Register tool listing
-  server.setRequestHandler('tools/list', async () => {
+  server.setRequestHandler({ method: 'tools/list' } as any, async () => {
     return {
       tools: [
         healthCheckTool

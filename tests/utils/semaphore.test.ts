@@ -1,4 +1,4 @@
-import { Semaphore } from '../../src/utils/semaphore.js';
+import { Semaphore } from '@/utils/semaphore.js';
 
 describe('Semaphore', () => {
   it('should allow immediate acquisition when permits available', async () => {

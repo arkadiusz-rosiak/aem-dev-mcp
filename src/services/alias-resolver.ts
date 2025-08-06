@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as yaml from 'js-yaml';
-import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '../types.js';
+import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '@/types.js';
 
 export class AliasResolver {
   private configPath: string;
@@ -17,7 +17,7 @@ export class AliasResolver {
       const configContent = await fs.promises.readFile(this.configPath, 'utf-8');
       this.config = yaml.load(configContent) as InstanceAliasConfig;
     } catch (error) {
-      throw new Error(`Failed to load configuration from ${this.configPath}: ${error.message}`);
+      throw new Error(`Failed to load configuration from ${this.configPath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

@@ -1,13 +1,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { validateEnvironment, setupSignalHandlers } from './utils/errors.js';
-import { registerHandlers } from './handlers/index.js';
-import { Logger } from './utils/logger.js';
+import { validateEnvironment, setupSignalHandlers } from '@/utils/errors.js';
+import { registerHandlers } from '@/handlers/index.js';
+import { Logger } from '@/utils/logger.js';
 
 export class McpAemServer {
   private server: Server;
   private logger: Logger;
-  private configPath: string;
+  private configPath!: string;
   private isShuttingDown: boolean = false;
 
   constructor() {
@@ -61,7 +61,7 @@ export class McpAemServer {
       
       this.logger.info('Shutdown complete');
     } catch (error) {
-      this.logger.error('Error during shutdown', { error: error.message });
+      this.logger.error('Error during shutdown', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -87,7 +87,7 @@ export class McpAemServer {
         configPath: this.configPath
       });
     } catch (error) {
-      this.logger.error('Failed to start server', { error: error.message });
+      this.logger.error('Failed to start server', { error: error instanceof Error ? error.message : String(error) });
       process.exit(1);
     }
   }

@@ -1,8 +1,8 @@
-import { MCPToolResult } from '../types.js';
-import { AliasResolver } from '../services/alias-resolver.js';
-import { ParallelExecutor } from '../services/parallel-executor.js';
-import { AemHttpClient } from '../services/http-client.js';
-import { createErrorResponse, logError } from '../utils/errors.js';
+import { MCPToolResult, AEMInstance } from '@/types.js';
+import { AliasResolver } from '@/services/alias-resolver.js';
+import { ParallelExecutor } from '@/services/parallel-executor.js';
+import { AemHttpClient } from '@/services/http-client.js';
+import { createErrorResponse, logError } from '@/utils/errors.js';
 import { z } from 'zod';
 
 // Input validation schema
@@ -32,7 +32,7 @@ export async function handleHealthCheck(
     const validatedInput = HealthCheckSchema.parse(args);
     
     // 2. Resolve instances
-    let instances = [];
+    let instances: AEMInstance[] = [];
     if (validatedInput.aliases) {
       const resolution = await resolver.resolveMultipleAliases(validatedInput.aliases);
       if (!resolution.resolved) {

@@ -1,4 +1,4 @@
-import { MCPToolResult } from '../types.js';
+import { MCPToolResult } from '@/types.js';
 
 export function createErrorResponse(
   error: unknown,

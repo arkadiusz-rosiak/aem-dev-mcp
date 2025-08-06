@@ -1,13 +1,18 @@
-import { AliasResolver } from '../../src/services/alias-resolver.js';
+import { AliasResolver } from '@/services/alias-resolver.js';
 import * as fs from 'node:fs';
 import * as yaml from 'js-yaml';
 
-jest.mock('node:fs');
-jest.mock('js-yaml');
+jest.mock('node:fs', () => ({
+  promises: {
+    readFile: jest.fn()
+  }
+}));
+jest.mock('js-yaml', () => ({
+  load: jest.fn()
+}));
 
 describe('AliasResolver', () => {
   let resolver: AliasResolver;
-  const mockFs = fs as jest.Mocked<typeof fs>;
   const mockYaml = yaml as jest.Mocked<typeof yaml>;
 
   beforeEach(() => {
@@ -23,7 +28,7 @@ describe('AliasResolver', () => {
         ]
       };
 
-      mockFs.promises.readFile.mockResolvedValue('mock-yaml-content');
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
       mockYaml.load.mockReturnValue(mockConfig);
 
       const result = await resolver.resolveAlias('local');
@@ -40,7 +45,7 @@ describe('AliasResolver', () => {
     it('should return error for non-existent alias', async () => {
       const mockConfig = {};
 
-      mockFs.promises.readFile.mockResolvedValue('mock-yaml-content');
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
       mockYaml.load.mockReturnValue(mockConfig);
 
       const result = await resolver.resolveAlias('nonexistent');
@@ -50,7 +55,7 @@ describe('AliasResolver', () => {
     });
 
     it('should handle file read errors', async () => {
-      mockFs.promises.readFile.mockRejectedValue(new Error('File not found'));
+      (fs.promises.readFile as jest.Mock).mockRejectedValue(new Error('File not found'));
 
       const result = await resolver.resolveAlias('local');
 
@@ -66,7 +71,7 @@ describe('AliasResolver', () => {
         dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
       };
 
-      mockFs.promises.readFile.mockResolvedValue('mock-yaml-content');
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
       mockYaml.load.mockReturnValue(mockConfig);
 
       const result = await resolver.resolveMultipleAliases(['local', 'dev']);
@@ -80,7 +85,7 @@ describe('AliasResolver', () => {
         local: [{ url: 'http://localhost:4502', username: 'admin', password: 'admin' }]
       };
 
-      mockFs.promises.readFile.mockResolvedValue('mock-yaml-content');
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
       mockYaml.load.mockReturnValue(mockConfig);
 
       const result = await resolver.resolveMultipleAliases(['local', 'nonexistent']);
@@ -97,7 +102,7 @@ describe('AliasResolver', () => {
         dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
       };
 
-      mockFs.promises.readFile.mockResolvedValue('mock-yaml-content');
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
       mockYaml.load.mockReturnValue(mockConfig);
 
       const aliases = await resolver.listAliases();

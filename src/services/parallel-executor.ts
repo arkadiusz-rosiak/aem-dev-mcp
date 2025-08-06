@@ -1,12 +1,10 @@
-import { AEMInstance, InstanceOperationResult, ParallelExecutionOptions } from '../types.js';
-import { Semaphore } from '../utils/semaphore.js';
+import { AEMInstance, InstanceOperationResult, ParallelExecutionOptions } from '@/types.js';
+import { Semaphore } from '@/utils/semaphore.js';
 
 export class ParallelExecutor {
-  private maxConcurrency: number;
   private semaphore: Semaphore;
   
   constructor(maxConcurrency: number = 10) {
-    this.maxConcurrency = maxConcurrency;
     this.semaphore = new Semaphore(maxConcurrency);
   }
   
@@ -61,7 +59,6 @@ export class ParallelExecutor {
   }
   
   updateConcurrency(newLimit: number): void {
-    this.maxConcurrency = newLimit;
     this.semaphore = new Semaphore(newLimit);
   }
 }
