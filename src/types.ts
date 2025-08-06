@@ -25,7 +25,6 @@ export interface AEMInstance {
   url: string;        // Full AEM instance URL
   username: string;   // AEM username for authentication
   password: string;   // AEM password for authentication
-  port?: number;      // Optional explicit port
 }
 
 export interface InstanceOperationResult<T> {
@@ -45,18 +44,7 @@ export interface HealthStatus {
 
 // Instance Alias Configuration Types
 export interface InstanceAliasConfig {
-  version: string;
-  encryption?: {
-    enabled: boolean;
-    method: string;
-    keyPath?: string;
-  };
-  defaults?: {
-    timeout?: number;
-    retries?: number;
-    concurrency?: number;
-  };
-  [alias: string]: AEMInstance[] | any;
+  [alias: string]: AEMInstance[];
 }
 
 export interface AliasResolutionResult {

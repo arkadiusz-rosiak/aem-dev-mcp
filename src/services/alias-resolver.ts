@@ -47,8 +47,7 @@ export class AliasResolver {
       const instances: AEMInstance[] = aliasData.map((instance: any) => ({
         url: instance.url,
         username: instance.username,
-        password: instance.password,
-        port: instance.port
+        password: instance.password
       }));
       
       return {
@@ -106,7 +105,6 @@ export class AliasResolver {
     }
     
     return Object.keys(this.config).filter(key => 
-      !['version', 'encryption', 'defaults'].includes(key) && 
       Array.isArray(this.config![key])
     );
   }

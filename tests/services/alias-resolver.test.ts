@@ -33,8 +33,7 @@ describe('AliasResolver', () => {
       expect(result.instances[0]).toEqual({
         url: 'http://localhost:4502',
         username: 'admin',
-        password: 'admin',
-        port: undefined
+        password: 'admin'
       });
     });
 
@@ -94,8 +93,6 @@ describe('AliasResolver', () => {
   describe('listAliases', () => {
     it('should return list of available aliases', async () => {
       const mockConfig = {
-        version: '1.0',
-        defaults: { timeout: 30000 },
         local: [{ url: 'http://localhost:4502', username: 'admin', password: 'admin' }],
         dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
       };
@@ -106,8 +103,6 @@ describe('AliasResolver', () => {
       const aliases = await resolver.listAliases();
 
       expect(aliases).toEqual(['local', 'dev']);
-      expect(aliases).not.toContain('version');
-      expect(aliases).not.toContain('defaults');
     });
   });
 });
