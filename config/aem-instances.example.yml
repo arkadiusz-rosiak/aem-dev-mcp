@@ -1,0 +1,66 @@
+# AEM Instance Configuration
+# This file contains sensitive credentials - ensure proper access controls
+# Copy this file to aem-instances.yml and update with your instance details
+
+version: "1.0"
+
+# Optional encryption settings
+encryption:
+  enabled: false
+  method: "aes-256-cbc"
+  keyPath: "./config/encryption.key"
+
+# Default settings for all instances
+defaults:
+  timeout: 30000
+  retries: 3
+  concurrency: 10
+
+# Instance aliases for environment grouping
+local:
+  - url: http://localhost:4502
+    username: admin
+    password: admin
+    port: 4502
+  - url: http://localhost:4503
+    username: admin
+    password: admin
+    port: 4503
+
+development:
+  - url: https://dev-author.company.com
+    username: admin
+    password: dev-password
+
+staging:
+  - url: https://stage-author.company.com
+    username: admin
+    password: stage-password
+  - url: https://stage-publish.company.com
+    username: admin
+    password: stage-password
+
+production:
+  - url: https://prod-author.company.com
+    username: admin
+    password: prod-password
+  - url: https://prod-publish-1.company.com
+    username: admin
+    password: prod-password
+  - url: https://prod-publish-2.company.com
+    username: admin
+    password: prod-password
+
+# Additional environment-specific configurations
+int-author:
+  - url: https://int-author-1.company.com:4502
+    username: admin
+    password: int-password
+
+int-publish:
+  - url: https://int-publish-1.company.com:4503
+    username: admin
+    password: int-password
+  - url: https://int-publish-2.company.com:4503
+    username: admin
+    password: int-password
