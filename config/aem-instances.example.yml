@@ -1,6 +1,9 @@
-# AEM Instance Configuration
+# AEM Instance Configuration  
 # This file contains sensitive credentials - ensure proper access controls
 # Copy this file to aem-instances.yml and update with your instance details
+#
+# For use with Adobe Experience Manager® instances
+# Adobe®, AEM®, and Adobe Experience Manager® are registered trademarks of Adobe Inc.
 
 # Instance aliases for environment grouping
 local:
