@@ -65,6 +65,7 @@ export interface ParallelExecutionOptions {
   requestId?: string;
   timeout?: number;
   maxConcurrency?: number;
+  deduplicationKey?: string;
 }
 
 export interface ExecutionContext {

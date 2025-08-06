@@ -12,35 +12,42 @@ export function registerHandlers(server: Server, configPath: string): void {
   const parallelExecutor = new ParallelExecutor(maxConcurrency);
   const httpClient = new AemHttpClient();
   
-  // Register health check handler
-  server.setRequestHandler({ method: 'tools/call' } as any, async (request: any) => {
-    try {
-      if (request.params.name === 'aem_health_check') {
-        return await handleHealthCheck(
-          request.params.arguments,
+  // Register available tools list
+  (server as any).setRequestHandler({ method: 'tools/list' }, async () => {
+    return {
+      tools: [healthCheckTool]
+    };
+  });
+  
+  // Register tool call handler
+  (server as any).setRequestHandler({ method: 'tools/call' }, async (request: any) => {
+    const { name, arguments: args } = request.params;
+    
+    if (name === 'aem_health_check') {
+      try {
+        const result = await handleHealthCheck(
+          args,
           aliasResolver,
           parallelExecutor,
           httpClient
         );
+        return result;
+      } catch (error) {
+        logError(error, { tool: name, arguments: args });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+              tool: name
+            })
+          }],
+          isError: true
+        };
       }
-      
-      throw new Error(`Unknown tool: ${request.params.name}`);
-    } catch (error) {
-      logError(error, { 
-        tool: request.params.name, 
-        arguments: request.params.arguments 
-      });
-      throw error;
     }
-  });
-  
-  // Register tool listing
-  server.setRequestHandler({ method: 'tools/list' } as any, async () => {
-    return {
-      tools: [
-        healthCheckTool
-      ]
-    };
+    
+    throw new Error(`Unknown tool: ${name}`);
   });
   
   // Store clients for cleanup
@@ -51,6 +58,7 @@ export function registerHandlers(server: Server, configPath: string): void {
   // Cleanup function (to be called on shutdown)
   const cleanup = async () => {
     await httpClient.cleanup();
+    parallelExecutor.cleanup();
   };
   
   // Store cleanup function for later use

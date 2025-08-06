@@ -139,6 +139,149 @@ MIT License - See LICENSE file for details
 
 This is an independent open-source project. All trademarks mentioned are the property of their respective owners. Use of third-party trademarks does not indicate affiliation or endorsement.
 
+## Troubleshooting
+
+### Common Issues
+
+#### Configuration Loading Errors
+**Problem:** Server fails with "Failed to load configuration" error  
+**Solution:** 
+- Verify the configuration file path is correct
+- Check YAML syntax is valid (use a YAML validator)
+- Ensure file permissions allow reading
+- Verify no duplicate aliases exist (case-insensitive)
+
+#### Connection Timeouts
+**Problem:** Health checks or operations timing out  
+**Solution:**
+- Increase timeout via `MCP_AEM_REQUEST_TIMEOUT` environment variable
+- Check network connectivity to target instances
+- Verify instance URLs are correct and accessible
+- Consider increasing retry attempts in high-latency environments
+
+#### Memory Usage Issues
+**Problem:** High memory consumption over time  
+**Solution:**
+- Automatic cleanup runs every minute for stale connections
+- Reduce `MCP_AEM_MAX_CONCURRENCY` for lower memory footprint
+- Monitor instance count and reduce if necessary
+- Restart server periodically for long-running operations
+
+#### Authentication Failures
+**Problem:** 401/403 errors when connecting to instances  
+**Solution:**
+- Verify credentials in configuration file
+- Check user permissions on target instances
+- Ensure passwords don't contain special YAML characters (or properly escape them)
+- Validate instance URLs include correct protocol (http/https)
+
+#### Rate Limiting
+**Problem:** 429 errors or throttling from instances  
+**Solution:**
+- Reduce `MCP_AEM_MAX_CONCURRENCY` setting
+- Implement delays between batch operations
+- Use request deduplication for repeated operations
+- Monitor instance load and adjust accordingly
+
+### Debug Mode
+
+Enable debug logging for detailed troubleshooting:
+
+```bash
+export MCP_AEM_LOG_LEVEL=debug
+npm start
+```
+
+### Performance Tuning
+
+- **Concurrency:** Adjust `MCP_AEM_MAX_CONCURRENCY` based on instance capacity
+- **Timeouts:** Set appropriate timeouts for your network conditions
+- **Connection Pooling:** Connections are reused for 5 minutes before cleanup
+- **Request Deduplication:** Use deduplication keys for identical concurrent requests
+
+## API Documentation
+
+### MCP Tools
+
+#### aem_health_check
+
+Performs health checks on specified instances.
+
+**Input Schema:**
+```typescript
+{
+  aliases?: string[];      // Instance aliases from configuration
+  instances?: AEMInstance[]; // Direct instance specifications
+  timeout?: number;        // Operation timeout in milliseconds
+}
+```
+
+**Output:**
+```typescript
+{
+  results: InstanceOperationResult<HealthStatus>[];
+  summary: {
+    total: number;
+    healthy: number;
+    unhealthy: number;
+    degraded: number;
+  };
+}
+```
+
+**Example:**
+```json
+{
+  "tool": "aem_health_check",
+  "arguments": {
+    "aliases": ["production", "staging"],
+    "timeout": 10000
+  }
+}
+```
+
+### Service APIs
+
+#### AliasResolver
+
+Manages instance alias resolution from configuration.
+
+**Methods:**
+- `resolveAlias(alias: string)`: Resolve single alias to instances
+- `resolveMultipleAliases(aliases: string[])`: Resolve multiple aliases
+- `listAliases()`: Get all configured aliases
+- `reloadConfig()`: Force configuration reload
+
+#### ParallelExecutor
+
+Handles concurrent operation execution with rate limiting.
+
+**Methods:**
+- `executeOnInstances<T>(instances, operation, options)`: Execute operation on multiple instances
+- `updateConcurrency(limit)`: Update concurrency limit dynamically
+- `cleanup()`: Clean up resources
+
+**Options:**
+- `requestId`: Unique identifier for request tracking
+- `timeout`: Operation timeout override
+- `deduplicationKey`: Key for request deduplication
+- `maxConcurrency`: Override default concurrency limit
+
+#### AemHttpClient
+
+HTTP client with connection pooling and retry logic.
+
+**Methods:**
+- `checkHealth(instance, timeout?)`: Perform health check
+- `makeRequest(instance, path, method, data?, timeout?)`: Execute HTTP request
+- `cleanup()`: Clean up connections
+
+**Features:**
+- Automatic retry with exponential backoff
+- Connection reuse with keep-alive
+- Stale connection cleanup
+- Request timeout configuration
+
 ## Support
 
 This tool is provided as-is for the community. For issues, please use the GitHub issue tracker.

@@ -5,20 +5,68 @@ import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '@/types
 export class AliasResolver {
   private configPath: string;
   private config: InstanceAliasConfig | null = null;
+  private configLock: Promise<void> | null = null;
   
   constructor(configPath: string) {
     this.configPath = configPath;
   }
   
+  private validateConfig(config: InstanceAliasConfig): void {
+    const aliases = new Set<string>();
+    
+    for (const alias of Object.keys(config)) {
+      if (aliases.has(alias.toLowerCase())) {
+        throw new Error(`Duplicate alias found (case-insensitive): ${alias}`);
+      }
+      aliases.add(alias.toLowerCase());
+      
+      const instances = config[alias];
+      if (!Array.isArray(instances)) {
+        throw new Error(`Alias '${alias}' must contain an array of instances`);
+      }
+      
+      if (instances.length === 0) {
+        throw new Error(`Alias '${alias}' contains empty instance array`);
+      }
+      
+      for (const instance of instances) {
+        if (!instance.url || !instance.username || !instance.password) {
+          throw new Error(`Invalid instance configuration in alias '${alias}': missing required fields`);
+        }
+        
+        try {
+          new URL(instance.url);
+        } catch {
+          throw new Error(`Invalid URL in alias '${alias}': ${instance.url}`);
+        }
+      }
+    }
+  }
+  
   private async loadConfig(): Promise<void> {
     if (this.config) return;
     
-    try {
-      const configContent = await fs.promises.readFile(this.configPath, 'utf-8');
-      this.config = yaml.load(configContent) as InstanceAliasConfig;
-    } catch (error) {
-      throw new Error(`Failed to load configuration from ${this.configPath}: ${error instanceof Error ? error.message : String(error)}`);
+    // Prevent race conditions during config loading
+    if (this.configLock) {
+      await this.configLock;
+      return;
     }
+    
+    this.configLock = (async () => {
+      try {
+        const configContent = await fs.promises.readFile(this.configPath, 'utf-8');
+        const loadedConfig = yaml.load(configContent) as InstanceAliasConfig;
+        
+        this.validateConfig(loadedConfig);
+        this.config = loadedConfig;
+      } catch (error) {
+        throw new Error(`Failed to load configuration from ${this.configPath}: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        this.configLock = null;
+      }
+    })();
+    
+    await this.configLock;
   }
   
   async resolveAlias(alias: string): Promise<AliasResolutionResult> {
@@ -44,7 +92,7 @@ export class AliasResolver {
         };
       }
       
-      const instances: AEMInstance[] = aliasData.map((instance: any) => ({
+      const instances: AEMInstance[] = aliasData.map((instance: AEMInstance) => ({
         url: instance.url,
         username: instance.username,
         password: instance.password
