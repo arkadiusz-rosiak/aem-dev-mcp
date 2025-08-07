@@ -11,11 +11,7 @@ export interface MCPToolResult {
 }
 
 export interface EnvConfig {
-  MCP_AEM_CONFIG_PATH?: string;
-  MCP_AEM_LOG_LEVEL?: 'debug' | 'info' | 'warn' | 'error';
-  MCP_AEM_MAX_CONCURRENCY?: string;
-  MCP_AEM_REQUEST_TIMEOUT?: string;
-  MCP_AEM_ENABLE_METRICS?: string;
+  AEM_INSTANCES_CONFIG_PATH?: string;
 }
 
 export interface AEMInstance {

@@ -4,7 +4,7 @@ export class Logger {
   private level: LogLevel;
   
   constructor(level: LogLevel = 'info') {
-    this.level = process.env.MCP_AEM_LOG_LEVEL as LogLevel || level;
+    this.level = level;
   }
   
   private shouldLog(level: LogLevel): boolean {

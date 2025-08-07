@@ -1,13 +1,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { validateEnvironment, setupSignalHandlers } from '@/utils/errors.js';
+import { getConfigPath } from '@/utils/config.js';
 import { registerHandlers } from '@/handlers/index.js';
 import { Logger } from '@/utils/logger.js';
 
 export class McpAemServer {
   private server: Server;
   private logger: Logger;
-  private configPath!: string;
+  private configPath: string | null = null;
   private isShuttingDown: boolean = false;
 
   constructor() {
@@ -26,19 +26,19 @@ export class McpAemServer {
   }
 
   async initialize(): Promise<void> {
-    validateEnvironment();
-    
-    this.configPath = process.env.MCP_AEM_CONFIG_PATH!;
+    this.configPath = getConfigPath(this.logger);
     this.logger.info('Initializing MCP AEM Server', {
       configPath: this.configPath,
       version: '1.0.0'
     });
 
-    registerHandlers(this.server, this.configPath);
+    if (this.configPath) {
+      registerHandlers(this.server, this.configPath);
+    } else {
+      registerHandlers(this.server, '');
+    }
 
-    setupSignalHandlers(async () => {
-      await this.shutdown();
-    });
+    this.setupSignalHandlers();
 
     this.logger.info('MCP AEM Server initialized successfully');
   }
@@ -53,9 +53,37 @@ export class McpAemServer {
       await this.server.connect(transport);
       this.logger.info('MCP AEM Server started and listening');
     } catch (error) {
-      this.logger.error('Failed to start server', { error });
+      this.logger.error('Failed to start server', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined 
+      });
       throw error;
     }
+  }
+
+  private setupSignalHandlers(): void {
+    const handleShutdown = async (signal: string) => {
+      this.logger.info(`Received ${signal}. Shutting down gracefully...`);
+      try {
+        await this.shutdown();
+        this.logger.info('Cleanup completed successfully.');
+        process.exit(0);
+      } catch (error) {
+        this.logger.error('Error during cleanup', { error });
+        process.exit(1);
+      }
+    };
+    
+    process.on('SIGINT', () => handleShutdown('SIGINT'));
+    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+    process.on('uncaughtException', (error) => {
+      this.logger.error('Uncaught Exception', { error });
+      process.exit(1);
+    });
+    process.on('unhandledRejection', (reason) => {
+      this.logger.error('Unhandled Rejection', { reason });
+      process.exit(1);
+    });
   }
 
   async shutdown(): Promise<void> {
@@ -88,11 +116,18 @@ async function main(): Promise<void> {
     await server.initialize();
     await server.start();
   } catch (error) {
-    console.error('Failed to start MCP AEM Server:', error);
+    const logger = new Logger();
+    logger.error('Failed to start MCP AEM Server', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined 
+    });
     process.exit(1);
   }
 }
 
-if (require.main === module) {
-  main().catch(console.error);
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    const logger = new Logger();
+    logger.error('Unhandled error in main', { error });
+  });
 }

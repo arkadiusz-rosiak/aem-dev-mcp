@@ -1,4 +1,4 @@
-import { AliasResolver } from '@/services/alias-resolver.js';
+import { AliasResolver } from '@/services/alias-resolver';
 import * as fs from 'node:fs';
 import * as yaml from 'js-yaml';
 

@@ -1,11 +1,8 @@
 # AEM Instance Configuration  
 # This file contains sensitive credentials - ensure proper access controls
-# Copy this file to aem-instances.yml and update with your instance details
-#
-# For use with Adobe Experience Manager® instances
-# Adobe®, AEM®, and Adobe Experience Manager® are registered trademarks of Adobe Inc.
+# Copy this file to aem-instances.yaml and update with your instance details
 
-# Instance aliases for environment grouping
+
 local:
   - url: http://localhost:4502
     username: admin
@@ -13,30 +10,6 @@ local:
   - url: http://localhost:4503
     username: admin
     password: admin
-
-development:
-  - url: https://dev-author.company.com
-    username: admin
-    password: dev-password
-
-staging:
-  - url: https://stage-author.company.com
-    username: admin
-    password: stage-password
-  - url: https://stage-publish.company.com
-    username: admin
-    password: stage-password
-
-production:
-  - url: https://prod-author.company.com
-    username: admin
-    password: prod-password
-  - url: https://prod-publish-1.company.com
-    username: admin
-    password: prod-password
-  - url: https://prod-publish-2.company.com
-    username: admin
-    password: prod-password
 
 # Additional environment-specific configurations
 int-author:

@@ -2,12 +2,12 @@
   "name": "aem-mcp-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "Independent MCP server providing connectivity tools for Adobe Experience Manager® instances",
-  "main": "dist/index.js",
+  "description": "AEM MCP server providing connectivity tools for Adobe Experience Manager® instances",
+  "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
+    "build": "tsc && tsc-alias",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -32,6 +32,7 @@
     "eslint": "^9.32.0",
     "jest": "^30.0.5",
     "ts-jest": "^29.2.5",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2"
   },
@@ -41,10 +42,10 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "cms-connector",
-    "typescript",
+    "aem-connector",
+    "aem",
     "automation-tools"
   ],
-  "author": "",
+  "author": "Arkadiusz Rosiak",
   "license": "MIT"
 }

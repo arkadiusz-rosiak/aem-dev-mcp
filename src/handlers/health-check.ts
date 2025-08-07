@@ -2,7 +2,8 @@ import { MCPToolResult, AEMInstance } from '@/types.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { createErrorResponse, logError } from '@/utils/errors.js';
+import { createErrorResponse } from '@/utils/errors.js';
+import { Logger } from '@/utils/logger.js';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -24,6 +25,7 @@ export async function handleHealthCheck(
   executor: ParallelExecutor,
   client: AemHttpClient
 ): Promise<MCPToolResult> {
+  const logger = new Logger();
   const requestId = uuidv4();
   
   try {
@@ -72,7 +74,12 @@ export async function handleHealthCheck(
       isError: false
     };
   } catch (error) {
-    logError(error, { requestId, handler: 'health-check', args });
+    logger.error(error instanceof Error ? error.message : String(error), { 
+      requestId, 
+      handler: 'health-check', 
+      args,
+      stack: error instanceof Error ? error.stack : undefined 
+    });
     
     return createErrorResponse(error, requestId);
   }

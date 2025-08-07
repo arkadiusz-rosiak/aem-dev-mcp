@@ -22,7 +22,7 @@ export class AemHttpClient {
     this.agents = new Map();
     this.clients = new Map();
     this.agentTimestamps = new Map();
-    this.defaultTimeout = parseInt(process.env.MCP_AEM_REQUEST_TIMEOUT || '30000');
+    this.defaultTimeout = 30000;
     
     this.retryConfig = {
       maxRetries: 3,
