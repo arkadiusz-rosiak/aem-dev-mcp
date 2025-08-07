@@ -19,85 +19,80 @@ export class McpAemServer {
       },
       {
         capabilities: {
-          tools: {},
-        },
+          tools: {}
+        }
       }
     );
   }
 
-  private async validateEnvironment(): Promise<void> {
-    this.logger.info('Validating environment configuration...');
+  async initialize(): Promise<void> {
+    validateEnvironment();
     
-    // Check required environment variables and configuration
-    this.configPath = process.env.MCP_AEM_CONFIG_PATH || './config/aem-instances.yml';
-    
-    // Validate environment using utility function
-    await validateEnvironment();
-    
-    this.logger.info('Environment validation successful', { 
+    this.configPath = process.env.MCP_AEM_CONFIG_PATH!;
+    this.logger.info('Initializing MCP AEM Server', {
       configPath: this.configPath,
-      maxConcurrency: process.env.MCP_AEM_MAX_CONCURRENCY || '10',
-      logLevel: process.env.MCP_AEM_LOG_LEVEL || 'info'
+      version: '1.0.0'
     });
-  }
 
-  private setupSignalHandlers(): void {
+    registerHandlers(this.server, this.configPath);
+
     setupSignalHandlers(async () => {
       await this.shutdown();
     });
+
+    this.logger.info('MCP AEM Server initialized successfully');
   }
 
-  private async shutdown(): Promise<void> {
-    if (this.isShuttingDown) return;
-    
-    this.isShuttingDown = true;
-    this.logger.info('Shutting down Mcp Aem Server...');
-    
+  async start(): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+
     try {
-      // Call cleanup function if available
-      if ((this.server as any).cleanup) {
-        await (this.server as any).cleanup();
-      }
-      
-      this.logger.info('Shutdown complete');
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      this.logger.info('MCP AEM Server started and listening');
     } catch (error) {
-      this.logger.error('Error during shutdown', { error: error instanceof Error ? error.message : String(error) });
+      this.logger.error('Failed to start server', { error });
       throw error;
     }
   }
 
-  async start(): Promise<void> {
+  async shutdown(): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+
+    this.isShuttingDown = true;
+    this.logger.info('Shutting down MCP AEM Server');
+
     try {
-      // Validate environment on startup
-      await this.validateEnvironment();
-      
-      // Setup signal handlers for graceful shutdown
-      this.setupSignalHandlers();
-      
-      // Register all handlers
-      registerHandlers(this.server, this.configPath);
-      
-      // Setup transport
-      const transport = new StdioServerTransport();
-      await this.server.connect(transport);
-      
-      this.logger.info('Mcp Aem Server started successfully', {
-        serverName: 'aem-mcp-server',
-        version: '1.0.0',
-        configPath: this.configPath
-      });
+      const serverCleanup = (this.server as any).cleanup;
+      if (serverCleanup) {
+        await serverCleanup();
+      }
+
+      await this.server.close();
+      this.logger.info('MCP AEM Server shutdown completed');
     } catch (error) {
-      this.logger.error('Failed to start server', { error: error instanceof Error ? error.message : String(error) });
-      process.exit(1);
+      this.logger.error('Error during server shutdown', { error });
+      throw error;
     }
   }
 }
 
-// Entry point
-if (import.meta.url === `file://${process.argv[1]}`) {
+async function main(): Promise<void> {
   const server = new McpAemServer();
-  server.start().catch((error) => {
-    console.error('Fatal error:', error);
+  
+  try {
+    await server.initialize();
+    await server.start();
+  } catch (error) {
+    console.error('Failed to start MCP AEM Server:', error);
     process.exit(1);
-  });
+  }
+}
+
+if (require.main === module) {
+  main().catch(console.error);
 }

@@ -1,4 +1,3 @@
-// MCP Standard Types
 export interface MCPToolContent {
   type: 'text' | 'image';
   text?: string;
@@ -11,7 +10,6 @@ export interface MCPToolResult {
   isError?: boolean;
 }
 
-// Environment Configuration
 export interface EnvConfig {
   MCP_AEM_CONFIG_PATH?: string;
   MCP_AEM_LOG_LEVEL?: 'debug' | 'info' | 'warn' | 'error';
@@ -20,20 +18,19 @@ export interface EnvConfig {
   MCP_AEM_ENABLE_METRICS?: string;
 }
 
-// AEM-specific Types
 export interface AEMInstance {
-  url: string;        // Full AEM instance URL
-  username: string;   // AEM username for authentication
-  password: string;   // AEM password for authentication
+  url: string;
+  username: string;
+  password: string;
 }
 
 export interface InstanceOperationResult<T> {
-  instanceUrl: string;    // Instance identifier
-  success: boolean;       // Operation success status
-  data?: T;              // Operation result data
-  error?: string;        // Error message if failed
-  duration?: number;     // Execution time in milliseconds
-  requestId?: string;    // Request tracking ID
+  instanceUrl: string;
+  success: boolean;
+  data?: T;
+  error?: string;
+  duration?: number;
+  requestId?: string;
 }
 
 export interface HealthStatus {
@@ -42,7 +39,6 @@ export interface HealthStatus {
   checks: Record<string, boolean>;
 }
 
-// Instance Alias Configuration Types
 export interface InstanceAliasConfig {
   [alias: string]: AEMInstance[];
 }
@@ -54,13 +50,11 @@ export interface AliasResolutionResult {
   error?: string;
 }
 
-// Handler Input Types
 export interface HealthCheckInput {
   aliases?: string[];
   instances?: AEMInstance[];
 }
 
-// Parallel Execution Types
 export interface ParallelExecutionOptions {
   requestId?: string;
   timeout?: number;

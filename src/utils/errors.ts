@@ -21,69 +21,54 @@ export function createErrorResponse(
 
 export function logError(
   error: unknown,
-  context: Record<string, any> = {}
+  context?: Record<string, unknown>
 ): void {
-  const timestamp = new Date().toISOString();
   const errorMessage = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error ? error.stack : undefined;
+  const errorStack = error instanceof Error ? error.stack : undefined;
   
-  console.error(JSON.stringify({
-    timestamp,
-    level: 'error',
-    message: errorMessage,
-    stack,
-    context
-  }));
+  console.error(`[ERROR] ${errorMessage}`, {
+    ...context,
+    stack: errorStack,
+    timestamp: new Date().toISOString()
+  });
 }
 
-export async function validateEnvironment(): Promise<void> {
-  const configPath = process.env.MCP_AEM_CONFIG_PATH || './config/aem-instances.yml';
+export function validateEnvironment(): void {
+  const requiredEnvs = ['MCP_AEM_CONFIG_PATH'];
+  const missingEnvs: string[] = [];
   
-  try {
-    const fs = await import('node:fs');
-    await fs.promises.access(configPath);
-  } catch (error) {
-    throw new Error(`Configuration file not found: ${configPath}. Please set MCP_AEM_CONFIG_PATH environment variable or create config file.`);
+  for (const env of requiredEnvs) {
+    if (!process.env[env]) {
+      missingEnvs.push(env);
+    }
   }
   
-  const maxConcurrency = parseInt(process.env.MCP_AEM_MAX_CONCURRENCY || '10');
-  if (isNaN(maxConcurrency) || maxConcurrency < 1) {
-    throw new Error('Invalid MCP_AEM_MAX_CONCURRENCY value. Must be a positive integer.');
-  }
-  
-  const requestTimeout = parseInt(process.env.MCP_AEM_REQUEST_TIMEOUT || '30000');
-  if (isNaN(requestTimeout) || requestTimeout < 1000) {
-    throw new Error('Invalid MCP_AEM_REQUEST_TIMEOUT value. Must be at least 1000ms.');
+  if (missingEnvs.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingEnvs.join(', ')}`);
   }
 }
 
-export function setupSignalHandlers(shutdownFn: () => Promise<void>): void {
-  let isShuttingDown = false;
-  
-  const handleSignal = async (signal: string) => {
-    if (!isShuttingDown) {
-      isShuttingDown = true;
-      console.log(`Received ${signal}, initiating graceful shutdown...`);
-      try {
-        await shutdownFn();
-        process.exit(0);
-      } catch (error) {
-        logError(error, { signal, phase: 'shutdown' });
-        process.exit(1);
-      }
+export function setupSignalHandlers(cleanup: () => Promise<void>): void {
+  const handleShutdown = async (signal: string) => {
+    console.log(`Received ${signal}. Shutting down gracefully...`);
+    try {
+      await cleanup();
+      console.log('Cleanup completed successfully.');
+      process.exit(0);
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      process.exit(1);
     }
   };
   
-  process.on('SIGINT', () => handleSignal('SIGINT'));
-  process.on('SIGTERM', () => handleSignal('SIGTERM'));
-  
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
   process.on('uncaughtException', (error) => {
-    logError(error, { type: 'uncaughtException' });
+    console.error('Uncaught Exception:', error);
     process.exit(1);
   });
-  
-  process.on('unhandledRejection', (reason, promise) => {
-    logError(reason, { type: 'unhandledRejection', promise: promise.toString() });
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled Rejection:', reason);
     process.exit(1);
   });
 }

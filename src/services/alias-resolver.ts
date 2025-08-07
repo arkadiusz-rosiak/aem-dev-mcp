@@ -46,7 +46,6 @@ export class AliasResolver {
   private async loadConfig(): Promise<void> {
     if (this.config) return;
     
-    // Prevent race conditions during config loading
     if (this.configLock) {
       await this.configLock;
       return;

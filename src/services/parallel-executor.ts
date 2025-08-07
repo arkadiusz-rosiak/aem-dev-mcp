@@ -10,7 +10,7 @@ interface PendingRequest<T> {
 export class ParallelExecutor {
   private semaphore: Semaphore;
   private pendingRequests: Map<string, PendingRequest<InstanceOperationResult<unknown>>>;
-  private readonly requestCacheDuration = 5000; // 5 seconds
+  private readonly requestCacheDuration = 5000;
   private cleanupTimer: NodeJS.Timeout | null = null;
   
   constructor(maxConcurrency: number = 10) {
@@ -22,7 +22,7 @@ export class ParallelExecutor {
   private startCleanupTimer(): void {
     this.cleanupTimer = setInterval(() => {
       this.cleanupStaleRequests();
-    }, 10000); // Clean up every 10 seconds
+    }, 10000);
   }
   
   private cleanupStaleRequests(): void {
@@ -60,19 +60,15 @@ export class ParallelExecutor {
     const operations = instances.map(async (instance): Promise<InstanceOperationResult<T>> => {
       const requestKey = this.generateRequestKey(instance, deduplicationKey);
       
-      // Check for existing pending request
       if (deduplicationKey) {
         const existingRequest = this.pendingRequests.get(requestKey);
         if (existingRequest && Date.now() - existingRequest.timestamp < this.requestCacheDuration) {
-          // Return the existing promise result
           return existingRequest.promise as Promise<InstanceOperationResult<T>>;
         }
       }
       
-      // Create new request promise
       const requestPromise = this.executeOperation(instance, operation, requestId);
       
-      // Store for deduplication if key provided
       if (deduplicationKey) {
         this.pendingRequests.set(requestKey, {
           promise: requestPromise as Promise<InstanceOperationResult<unknown>>,
@@ -89,7 +85,6 @@ export class ParallelExecutor {
       if (result.status === 'fulfilled') {
         return result.value;
       } else {
-        // Handle rejected promises with proper typing
         const instance = instances[index];
         return {
           instanceUrl: instance?.url || 'unknown',

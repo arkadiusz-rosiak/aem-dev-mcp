@@ -20,8 +20,8 @@ export class Semaphore {
   release(): void {
     this.permits++;
     if (this.queue.length > 0) {
-      this.permits--;
       const resolve = this.queue.shift()!;
+      this.permits--;
       resolve();
     }
   }

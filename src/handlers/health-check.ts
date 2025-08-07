@@ -6,7 +6,6 @@ import { createErrorResponse, logError } from '@/utils/errors.js';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 
-// Input validation schema
 const HealthCheckSchema = z.object({
   aliases: z.array(z.string()).optional(),
   instances: z.array(z.object({
@@ -25,14 +24,11 @@ export async function handleHealthCheck(
   executor: ParallelExecutor,
   client: AemHttpClient
 ): Promise<MCPToolResult> {
-  // Generate unique request ID for tracking
   const requestId = uuidv4();
   
   try {
-    // 1. Validate arguments
     const validatedInput = HealthCheckSchema.parse(args);
     
-    // 2. Resolve instances
     let instances: AEMInstance[] = [];
     if (validatedInput.aliases) {
       const resolution = await resolver.resolveMultipleAliases(validatedInput.aliases);
@@ -44,7 +40,6 @@ export async function handleHealthCheck(
       instances = validatedInput.instances;
     }
     
-    // 3. Execute health checks in parallel
     const results = await executor.executeOnInstances(
       instances,
       async (instance) => {
@@ -53,41 +48,46 @@ export async function handleHealthCheck(
       { requestId }
     );
     
-    // 4. Return MCP format result
     return {
       content: [{
         type: 'text',
         text: JSON.stringify({
           requestId,
-          timestamp: new Date().toISOString(),
-          results: results.map(r => ({
-            instanceUrl: r.instanceUrl,
-            status: r.success ? r.data?.status || 'unknown' : 'unhealthy',
-            duration: r.duration,
-            error: r.error,
-            checks: r.success ? r.data?.checks : undefined
-          }))
+          results: results.map(result => ({
+            instanceUrl: result.instanceUrl,
+            success: result.success,
+            data: result.data,
+            error: result.error,
+            duration: result.duration
+          })),
+          summary: {
+            total: results.length,
+            healthy: results.filter(r => r.success && r.data?.status === 'healthy').length,
+            unhealthy: results.filter(r => !r.success || r.data?.status === 'unhealthy').length,
+            degraded: results.filter(r => r.success && r.data?.status === 'degraded').length
+          },
+          timestamp: Date.now()
         }, null, 2)
-      }]
+      }],
+      isError: false
     };
-    
   } catch (error) {
-    logError(error, { requestId, handler: 'health-check' });
+    logError(error, { requestId, handler: 'health-check', args });
+    
     return createErrorResponse(error, requestId);
   }
 }
 
-// Handler registration
 export const healthCheckTool = {
   name: 'aem_health_check',
-  description: 'Check health status of AEM instances using aliases or direct configuration',
+  description: 'Performs health checks on specified AEM instances to verify system status and connectivity',
   inputSchema: {
     type: 'object',
     properties: {
       aliases: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Instance aliases to check (e.g., ["local", "staging"])'
+        description: 'Instance aliases from configuration to check'
       },
       instances: {
         type: 'array',

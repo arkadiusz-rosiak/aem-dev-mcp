@@ -13,8 +13,8 @@ export class AemHttpClient {
   private clients: Map<string, AxiosInstance>;
   private agentTimestamps: Map<string, number>;
   private cleanupTimer: NodeJS.Timeout | null = null;
-  private readonly maxAgentAge = 5 * 60 * 1000; // 5 minutes
-  private readonly cleanupInterval = 60 * 1000; // 1 minute
+  private readonly maxAgentAge = 5 * 60 * 1000;
+  private readonly cleanupInterval = 60 * 1000;
   private readonly defaultTimeout: number;
   private readonly retryConfig: RetryConfig;
   
@@ -29,10 +29,8 @@ export class AemHttpClient {
       retryDelay: (retryCount: number) => Math.min(1000 * Math.pow(2, retryCount), 10000),
       shouldRetry: (error: AxiosError) => {
         if (!error.response) {
-          // Network errors, timeouts
           return true;
         }
-        // Retry on 5xx errors or specific 4xx errors
         return error.response.status >= 500 || error.response.status === 429 || error.response.status === 408;
       }
     };
@@ -115,7 +113,7 @@ export class AemHttpClient {
         },
         httpsAgent: agent,
         timeout: timeout || this.defaultTimeout,
-        validateStatus: () => true // Handle all status codes
+        validateStatus: () => true
       });
       
       this.agents.set(key, agent);
@@ -132,19 +130,16 @@ export class AemHttpClient {
     const checks: Record<string, boolean> = {};
     
     try {
-      // Check system health endpoint with retry
       const healthResponse = await this.retryRequest(() => 
         client.get('/system/health')
       );
       checks.systemHealth = healthResponse.status === 200;
       
-      // Check login page accessibility with retry
       const loginResponse = await this.retryRequest(() => 
         client.get('/libs/granite/core/content/login.html')
       );
       checks.loginPage = loginResponse.status === 200;
       
-      // Check bundle status with retry
       const bundleResponse = await this.retryRequest(() => 
         client.get('/system/console/bundles.json')
       );
