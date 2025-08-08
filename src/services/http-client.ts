@@ -1,6 +1,6 @@
 import { Agent } from 'node:https';
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { AEMInstance, HealthStatus } from '@/types.js';
+import { AEMInstance } from '@/types.js';
 
 interface RetryConfig {
   maxRetries: number;
@@ -124,46 +124,6 @@ export class AemHttpClient {
     return this.clients.get(key)!;
   }
   
-  async checkHealth(instance: AEMInstance, timeout?: number): Promise<HealthStatus> {
-    const client = this.getOrCreateClient(instance, timeout);
-    const startTime = Date.now();
-    const checks: Record<string, boolean> = {};
-    
-    try {
-      const healthResponse = await this.retryRequest(() => 
-        client.get('/system/health')
-      );
-      checks.systemHealth = healthResponse.status === 200;
-      
-      const loginResponse = await this.retryRequest(() => 
-        client.get('/libs/granite/core/content/login.html')
-      );
-      checks.loginPage = loginResponse.status === 200;
-      
-      const bundleResponse = await this.retryRequest(() => 
-        client.get('/system/console/bundles.json')
-      );
-      checks.bundleStatus = bundleResponse.status === 200;
-      
-      const duration = Date.now() - startTime;
-      const overallHealthy = Object.values(checks).every(check => check);
-      
-      return {
-        status: overallHealthy ? (duration > 5000 ? 'degraded' : 'healthy') : 'unhealthy',
-        timestamp: Date.now(),
-        checks
-      };
-    } catch (error) {
-      return {
-        status: 'unhealthy',
-        timestamp: Date.now(),
-        checks: {
-          ...checks,
-          error: false
-        }
-      };
-    }
-  }
   
   async makeRequest(
     instance: AEMInstance, 
