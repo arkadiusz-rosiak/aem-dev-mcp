@@ -134,7 +134,7 @@ const createUnhealthyStatus = (instanceUrl: string, error: string): HealthStatus
     repository: {
       size: createByteSize(0),
       nodeCount: 0,
-      indexHealth: REPOSITORY_HEALTH.UNKNOWN,
+      indexHealth: REPOSITORY_HEALTH.UNHEALTHY,
       revisions: 0
     },
     requests: {

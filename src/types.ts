@@ -114,8 +114,7 @@ export interface ThreadMetrics {
 
 export const REPOSITORY_HEALTH = {
   HEALTHY: 'healthy',
-  DEGRADED: 'degraded',
-  UNKNOWN: 'unknown'
+  UNHEALTHY: 'unhealthy'
 } as const;
 
 export type RepositoryHealthType = typeof REPOSITORY_HEALTH[keyof typeof REPOSITORY_HEALTH];

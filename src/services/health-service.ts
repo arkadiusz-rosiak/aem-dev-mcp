@@ -449,7 +449,7 @@ export class HealthService {
       
       const indexHealth = isOk(response.status) 
         ? REPOSITORY_HEALTH.HEALTHY 
-        : REPOSITORY_HEALTH.DEGRADED;
+        : REPOSITORY_HEALTH.UNHEALTHY;
       
       return {
         size: createByteSize(0),
@@ -557,7 +557,7 @@ export class HealthService {
     return {
       size: createByteSize(0),
       nodeCount: 0,
-      indexHealth: REPOSITORY_HEALTH.UNKNOWN,
+      indexHealth: REPOSITORY_HEALTH.UNHEALTHY,
       revisions: 0
     };
   }
