@@ -5,5 +5,5 @@ export interface BundleInfo {
 
 export interface BundleData {
   readonly s?: readonly [number, number]; // [active, total]
-  readonly data?: readonly BundleInfo[];
+  readonly data?: ReadonlyArray<BundleInfo>;
 }
