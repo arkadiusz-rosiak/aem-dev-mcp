@@ -1,6 +1,6 @@
 import { Agent } from 'node:https';
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { AEMInstance } from '@/types.js';
+import { AEMInstance } from '@/types/index.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 
 interface RetryConfig {

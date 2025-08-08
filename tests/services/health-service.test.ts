@@ -7,7 +7,7 @@ import {
   HEALTH_COMPONENTS,
   createTimeout,
   createMilliseconds
-} from '@/types.js';
+} from '@/types/index.js';
 import { AxiosResponse } from 'axios';
 
 jest.mock('@/services/http-client.js');

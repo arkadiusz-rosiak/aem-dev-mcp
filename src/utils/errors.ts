@@ -1,4 +1,4 @@
-import { MCPToolResult } from '@/types.js';
+import { MCPToolResult } from '@/types/index.js';
 
 export function extractErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

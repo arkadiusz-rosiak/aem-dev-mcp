@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as yaml from 'js-yaml';
-import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '@/types.js';
+import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '@/types/index.js';
 import { extractErrorMessage } from '@/utils/errors.js';
 
 export class AliasResolver {

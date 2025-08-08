@@ -1,4 +1,4 @@
-import { AEMInstance, InstanceOperationResult, ParallelExecutionOptions } from '@/types.js';
+import { AEMInstance, InstanceOperationResult, ParallelExecutionOptions } from '@/types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { extractErrorMessage } from '@/utils/errors.js';
 

@@ -15,7 +15,7 @@ import {
   createRequestsPerSecond,
   createBundleCount,
   REPOSITORY_HEALTH
-} from '@/types.js';
+} from '@/types/index.js';
 
 jest.mock('@/services/alias-resolver.js');
 jest.mock('@/services/parallel-executor.js');

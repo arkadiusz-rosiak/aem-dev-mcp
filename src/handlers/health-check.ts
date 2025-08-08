@@ -19,7 +19,7 @@ import {
   createRequestsPerSecond,
   createBundleCount,
   REPOSITORY_HEALTH
-} from '@/types.js';
+} from '@/types/index.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { HealthService } from '@/services/health-service.js';

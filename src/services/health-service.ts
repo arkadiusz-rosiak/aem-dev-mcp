@@ -25,7 +25,7 @@ import {
   createBundleCount,
   createBundleName,
   REPOSITORY_HEALTH
-} from '@/types.js';
+} from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { BundleData } from '@/schemas/bundle-data.schema.js';
 import { HTML_PATTERNS, extractFromHTML } from '@/schemas/html-patterns.schema.js';

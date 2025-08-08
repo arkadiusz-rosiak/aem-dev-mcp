@@ -1,4 +1,4 @@
-import { OperationResult } from '@/types.js';
+import { OperationResult } from '@/types/index.js';
 
 export const createSuccessResult = <T>(
   data: T, 
