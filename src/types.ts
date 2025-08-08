@@ -218,10 +218,6 @@ export interface AliasResolutionResult {
   readonly error?: string;
 }
 
-export interface HealthCheckInput {
-  readonly aliases?: readonly string[];
-  readonly instances?: readonly AEMInstance[];
-}
 
 export type RequestId = string & { readonly __brand: 'RequestId' };
 export type TimeoutMs = number & { readonly __brand: 'TimeoutMs' };

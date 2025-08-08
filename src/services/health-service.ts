@@ -11,11 +11,13 @@ import {
   Milliseconds,
   createMilliseconds,
   TimeoutMs,
-  createTimeout,
   OperationResult
 } from '@/types.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { BundleData } from '@/schemas/bundle-data.schema.js';
+import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
+import { isOk, isAuthError, isSuccessOrRedirect } from '@/utils/http-status.js';
+import { TIMEOUTS } from '@/constants/timeouts.js';
 
 interface HealthCheckConfig {
   readonly timeout: TimeoutMs;
@@ -23,7 +25,7 @@ interface HealthCheckConfig {
 }
 
 const DEFAULT_CONFIG: HealthCheckConfig = {
-  timeout: createTimeout(15000),
+  timeout: TIMEOUTS.HEALTH_CHECK,
   slowResponseThreshold: createMilliseconds(5000)
 } as const;
 
@@ -35,17 +37,6 @@ interface ComponentCheckOptions {
 
 type HealthCheckFunction = (options: ComponentCheckOptions) => Promise<OperationResult<HealthCheckResult>>;
 
-const createSuccessResult = <T>(data: T, duration: number): OperationResult<T> => ({
-  success: true,
-  data,
-  duration
-});
-
-const createFailureResult = <E extends Error>(error: E, duration: number): OperationResult<never, E> => ({
-  success: false,
-  error,
-  duration
-});
 
 export class HealthService {
   readonly #httpClient: AemHttpClient;
@@ -101,7 +92,7 @@ export class HealthService {
         const response = await this.#httpClient.makeRequest(instance, '/', 'GET', undefined, timeout);
         const responseTime = createMilliseconds(Date.now() - startTime);
         
-        if (response.status >= 200 && response.status < 400) {
+        if (isSuccessOrRedirect(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.REACHABILITY,
             status: responseTime > this.#config.slowResponseThreshold 
@@ -144,7 +135,7 @@ export class HealthService {
         );
         const responseTime = createMilliseconds(Date.now() - startTime);
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           const bundleData = response.data as BundleData;
           const totalBundles = bundleData.s?.[1] ?? 0;
           const activeBundles = bundleData.s?.[0] ?? 0;
@@ -176,7 +167,7 @@ export class HealthService {
               active: activeBundles
             } as const
           }, responseTime);
-        } else if (response.status === 401 || response.status === 403) {
+        } else if (isAuthError(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.BUNDLES,
             status: HEALTH_STATUS.UNHEALTHY,
@@ -215,7 +206,7 @@ export class HealthService {
         );
         const responseTime = createMilliseconds(Date.now() - startTime);
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.LOGIN,
             status: HEALTH_STATUS.HEALTHY,
@@ -254,14 +245,14 @@ export class HealthService {
         );
         const responseTime = createMilliseconds(Date.now() - startTime);
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.REPOSITORY,
             status: HEALTH_STATUS.HEALTHY,
             message: 'Repository accessible',
             responseTime
           }, responseTime);
-        } else if (response.status === 401 || response.status === 403) {
+        } else if (isAuthError(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.REPOSITORY,
             status: HEALTH_STATUS.HEALTHY,
@@ -300,14 +291,14 @@ export class HealthService {
         );
         const responseTime = createMilliseconds(Date.now() - startTime);
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.CONSOLE,
             status: HEALTH_STATUS.HEALTHY,
             message: 'System console accessible',
             responseTime
           }, responseTime);
-        } else if (response.status === 401 || response.status === 403) {
+        } else if (isAuthError(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.CONSOLE,
             status: HEALTH_STATUS.DEGRADED,

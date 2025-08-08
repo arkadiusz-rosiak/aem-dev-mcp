@@ -1,6 +1,7 @@
 import { Agent } from 'node:https';
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { AEMInstance } from '@/types.js';
+import { TIMEOUTS } from '@/constants/timeouts.js';
 
 interface RetryConfig {
   maxRetries: number;
@@ -22,7 +23,7 @@ export class AemHttpClient {
     this.agents = new Map();
     this.clients = new Map();
     this.agentTimestamps = new Map();
-    this.defaultTimeout = 30000;
+    this.defaultTimeout = TIMEOUTS.HTTP_CLIENT;
     
     this.retryConfig = {
       maxRetries: 3,

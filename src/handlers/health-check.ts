@@ -3,7 +3,6 @@ import {
   HealthStatus, 
   AEMInstance, 
   HEALTH_STATUS,
-  createTimeout,
   createConcurrencyLimit,
   createRequestId,
   RequestId,
@@ -19,7 +18,7 @@ import { HealthService } from '@/services/health-service.js';
 import { DiagnosticsService } from '@/services/diagnostics-service.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { createErrorResponse } from '@/utils/errors.js';
-import { Logger } from '@/utils/logger.js';
+import { createLogger } from '@/utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { 
@@ -27,8 +26,8 @@ import {
   MAX_CONCURRENT_INSTANCES,
   type HealthCheckInput 
 } from '@/schemas/health-check.schema.js';
+import { TIMEOUTS } from '@/constants/timeouts.js';
 
-const DEFAULT_TIMEOUT = 15000;
 const DEFAULT_CONCURRENCY = 20;
 
 interface HealthCheckConfig {
@@ -37,7 +36,7 @@ interface HealthCheckConfig {
 }
 
 const createHealthCheckConfig = (overrides: Partial<HealthCheckConfig> = {}): HealthCheckConfig => ({
-  timeout: createTimeout(DEFAULT_TIMEOUT),
+  timeout: TIMEOUTS.HEALTH_CHECK,
   maxConcurrency: createConcurrencyLimit(DEFAULT_CONCURRENCY),
   ...overrides
 });
@@ -122,7 +121,7 @@ export async function handleHealthCheck(
   executor: ParallelExecutor,
   client: AemHttpClient
 ): Promise<MCPToolResult> {
-  const logger = new Logger();
+  const logger = createLogger();
   const requestId = createRequestId(uuidv4());
   
   try {
@@ -164,7 +163,7 @@ export async function handleHealthCheck(
     };
     
   } catch (error) {
-    logger.error('Health check failed', { error, requestId });
+    logger?.error?.('Health check failed', { error, requestId });
     
     const errorMessage = error instanceof z.ZodError 
       ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`

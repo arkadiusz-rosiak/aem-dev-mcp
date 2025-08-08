@@ -17,13 +17,15 @@ import {
   createBundleCount,
   createBundleName,
   TimeoutMs,
-  createTimeout,
   OperationResult
 } from '@/types.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { Logger } from '@/utils/logger.js';
+import { getDefaultLogger } from '@/utils/logger.js';
 import { HTML_PATTERNS, extractFromHTML } from '@/schemas/html-patterns.schema.js';
 import { BundleData } from '@/schemas/bundle-data.schema.js';
+import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
+import { isOk } from '@/utils/http-status.js';
+import { TIMEOUTS } from '@/constants/timeouts.js';
 
 interface DiagnosticsConfig {
   readonly timeout: TimeoutMs;
@@ -31,32 +33,21 @@ interface DiagnosticsConfig {
 }
 
 const DEFAULT_CONFIG: DiagnosticsConfig = {
-  timeout: createTimeout(15000),
+  timeout: TIMEOUTS.DIAGNOSTICS,
   concurrentChecks: true
 } as const;
 
 type DiagnosticsCollector<T> = (instance: AEMInstance) => Promise<OperationResult<T>>;
 
-const createSuccessResult = <T>(data: T): OperationResult<T> => ({
-  success: true,
-  data,
-  duration: 0
-});
-
-const createFailureResult = <E extends Error>(error: E): OperationResult<never, E> => ({
-  success: false,
-  error,
-  duration: 0
-});
 
 export class DiagnosticsService {
   readonly #httpClient: AemHttpClient;
-  readonly #logger: Logger;
+  readonly #logger: ReturnType<typeof getDefaultLogger>;
   readonly #config: DiagnosticsConfig;
 
   constructor(httpClient: AemHttpClient, config: Partial<DiagnosticsConfig> = {}) {
     this.#httpClient = httpClient;
-    this.#logger = new Logger();
+    this.#logger = getDefaultLogger();
     this.#config = { ...DEFAULT_CONFIG, ...config };
   }
   
@@ -121,7 +112,7 @@ export class DiagnosticsService {
           this.#config.timeout
         );
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           const html = response.data as string;
           
           const heapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemory) * 1024);
@@ -161,7 +152,7 @@ export class DiagnosticsService {
           this.#config.timeout
         );
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           const html = response.data as string;
           
           return createSuccessResult({
@@ -221,7 +212,7 @@ export class DiagnosticsService {
           this.#config.timeout
         );
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           const html = response.data as string;
           
           return createSuccessResult({
@@ -252,7 +243,7 @@ export class DiagnosticsService {
           this.#config.timeout
         );
         
-        if (response.status === 200) {
+        if (isOk(response.status)) {
           const bundleData = response.data as BundleData;
           const bundles = bundleData.data ?? [];
           

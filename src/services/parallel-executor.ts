@@ -1,5 +1,6 @@
 import { AEMInstance, InstanceOperationResult, ParallelExecutionOptions } from '@/types.js';
 import { v4 as uuidv4 } from 'uuid';
+import { extractErrorMessage } from '@/utils/errors.js';
 
 export class ParallelExecutor {
 
@@ -56,7 +57,7 @@ export class ParallelExecutor {
       return {
         instanceUrl: instance.url,
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: extractErrorMessage(error),
         duration,
         requestId
       };
