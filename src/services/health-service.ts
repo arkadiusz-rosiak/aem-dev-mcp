@@ -4,6 +4,7 @@ import {
   HealthCheckResult, 
   ErrorType, 
   HealthStatusType,
+  HealthComponentType,
   HEALTH_STATUS,
   HEALTH_COMPONENTS,
   ERROR_TYPES,
@@ -14,6 +15,7 @@ import {
   OperationResult
 } from '@/types.js';
 import { AemHttpClient } from '@/services/http-client.js';
+import { BundleData } from '@/schemas/bundle-data.schema.js';
 
 interface HealthCheckConfig {
   readonly timeout: TimeoutMs;
@@ -39,6 +41,11 @@ const createSuccessResult = <T>(data: T, duration: number): OperationResult<T> =
   duration
 });
 
+const createFailureResult = <E extends Error>(error: E, duration: number): OperationResult<never, E> => ({
+  success: false,
+  error,
+  duration
+});
 
 export class HealthService {
   readonly #httpClient: AemHttpClient;
@@ -52,15 +59,15 @@ export class HealthService {
   async performHealthCheck(instance: AEMInstance): Promise<HealthStatus> {
     const checks: HealthCheckResult[] = [];
     
-    const healthChecks: readonly HealthCheckFunction[] = [
-      this.#createReachabilityCheck(),
-      this.#createBundleCheck(),
-      this.#createLoginCheck(),
-      this.#createRepositoryCheck(),
-      this.#createConsoleCheck()
+    const healthCheckConfigs: readonly { check: HealthCheckFunction, component: HealthComponentType }[] = [
+      { check: this.#createReachabilityCheck(), component: HEALTH_COMPONENTS.REACHABILITY },
+      { check: this.#createBundleCheck(), component: HEALTH_COMPONENTS.BUNDLES },
+      { check: this.#createLoginCheck(), component: HEALTH_COMPONENTS.LOGIN },
+      { check: this.#createRepositoryCheck(), component: HEALTH_COMPONENTS.REPOSITORY },
+      { check: this.#createConsoleCheck(), component: HEALTH_COMPONENTS.CONSOLE }
     ] as const;
 
-    for (const healthCheck of healthChecks) {
+    for (const { check: healthCheck, component } of healthCheckConfigs) {
       const checkStartTime = Date.now();
       const result = await healthCheck({
         instance,
@@ -76,10 +83,10 @@ export class HealthService {
         }
       } else {
         checks.push({
-          component: HEALTH_COMPONENTS.SYSTEM,
+          component,
           status: HEALTH_STATUS.UNHEALTHY,
           message: result.error.message,
-          responseTime: result.duration
+          responseTime: createMilliseconds(result.duration)
         });
         break;
       }
@@ -117,12 +124,10 @@ export class HealthService {
         const responseTime = Date.now() - startTime;
         const healthCheckError = this.#classifyError(error);
         
-        return createSuccessResult({
-          component: HEALTH_COMPONENTS.REACHABILITY,
-          status: HEALTH_STATUS.UNHEALTHY,
-          message: healthCheckError.message,
-          responseTime: createMilliseconds(responseTime)
-        }, responseTime);
+        return createFailureResult(
+          new Error(healthCheckError.message),
+          responseTime
+        );
       }
     };
   }
@@ -140,7 +145,7 @@ export class HealthService {
         const responseTime = createMilliseconds(Date.now() - startTime);
         
         if (response.status === 200) {
-          const bundleData = response.data as { s?: number[]; data?: Array<{ state: string; symbolicName: string }> };
+          const bundleData = response.data as BundleData;
           const totalBundles = bundleData.s?.[1] ?? 0;
           const activeBundles = bundleData.s?.[0] ?? 0;
           const failedBundles = bundleData.data?.filter((bundle) => 
@@ -190,12 +195,10 @@ export class HealthService {
         const responseTime = Date.now() - startTime;
         const healthCheckError = this.#classifyError(error);
         
-        return createSuccessResult({
-          component: HEALTH_COMPONENTS.BUNDLES,
-          status: HEALTH_STATUS.UNHEALTHY,
-          message: healthCheckError.message,
-          responseTime: createMilliseconds(responseTime)
-        }, responseTime);
+        return createFailureResult(
+          new Error(healthCheckError.message),
+          responseTime
+        );
       }
     };
   }
@@ -231,12 +234,10 @@ export class HealthService {
         const responseTime = Date.now() - startTime;
         const healthCheckError = this.#classifyError(error);
         
-        return createSuccessResult({
-          component: HEALTH_COMPONENTS.LOGIN,
-          status: HEALTH_STATUS.UNHEALTHY,
-          message: healthCheckError.message,
-          responseTime: createMilliseconds(responseTime)
-        }, responseTime);
+        return createFailureResult(
+          new Error(healthCheckError.message),
+          responseTime
+        );
       }
     };
   }
@@ -279,12 +280,10 @@ export class HealthService {
         const responseTime = Date.now() - startTime;
         const healthCheckError = this.#classifyError(error);
         
-        return createSuccessResult({
-          component: HEALTH_COMPONENTS.REPOSITORY,
-          status: HEALTH_STATUS.UNHEALTHY,
-          message: healthCheckError.message,
-          responseTime: createMilliseconds(responseTime)
-        }, responseTime);
+        return createFailureResult(
+          new Error(healthCheckError.message),
+          responseTime
+        );
       }
     };
   }
@@ -327,12 +326,10 @@ export class HealthService {
         const responseTime = Date.now() - startTime;
         const healthCheckError = this.#classifyError(error);
         
-        return createSuccessResult({
-          component: HEALTH_COMPONENTS.CONSOLE,
-          status: HEALTH_STATUS.UNHEALTHY,
-          message: healthCheckError.message,
-          responseTime: createMilliseconds(responseTime)
-        }, responseTime);
+        return createFailureResult(
+          new Error(healthCheckError.message),
+          responseTime
+        );
       }
     };
   }
