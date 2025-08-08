@@ -111,6 +111,12 @@ export interface ConfigurationRequest {
   readonly bundleLocation?: string;
 }
 
+export interface ConfigurationUnbindRequest {
+  readonly instanceAlias: string;
+  readonly pid: string;
+  readonly bundleLocation?: string;
+}
+
 export interface BundleOperationResult {
   readonly success: boolean;
   readonly bundle?: OSGiBundle;

@@ -301,6 +301,65 @@ export class ConfigurationManagementService {
     }
   }
 
+  async unbindConfiguration(instance: AEMInstance, pid: string, bundleLocation?: string): Promise<OperationResult<ConfigurationOperationResult>> {
+    const startTime = Date.now();
+    
+    try {
+      const existingConfig = await this.getConfiguration(instance, pid);
+      if (!existingConfig.success) {
+        return createFailureResult(existingConfig.error, Date.now() - startTime);
+      }
+
+      const formData = new URLSearchParams();
+      formData.append('unbind', 'true');
+      
+      if (bundleLocation) {
+        formData.append('bundleLocation', bundleLocation);
+      }
+
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        `/system/console/configMgr/${encodeURIComponent(pid)}`,
+        'POST',
+        formData.toString(),
+        this.#config.timeout,
+        { 'Content-Type': 'application/x-www-form-urlencoded' }
+      );
+
+      if (!isOk(response.status)) {
+        if (isAuthError(response.status)) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            Date.now() - startTime
+          );
+        }
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unbind failed (HTTP ${response.status})`),
+          Date.now() - startTime
+        );
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const updatedConfig = await this.getConfiguration(instance, pid);
+      if (!updatedConfig.success) {
+        return createFailureResult(updatedConfig.error, Date.now() - startTime);
+      }
+
+      return createSuccessResult({
+        success: true,
+        configuration: updatedConfig.data,
+        message: 'Configuration unbound successfully'
+      }, Date.now() - startTime);
+
+    } catch (error) {
+      return createFailureResult(
+        this.#classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
   #parseConfigurations(configData: readonly any[]): OSGiConfiguration[] {
     const configurations: OSGiConfiguration[] = [];
 

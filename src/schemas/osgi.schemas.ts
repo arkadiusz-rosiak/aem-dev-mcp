@@ -159,6 +159,12 @@ export const ConfigurationDeleteSchema = z.object({
   pid: z.string().min(1, 'PID cannot be empty')
 });
 
+export const ConfigurationUnbindSchema = z.object({
+  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+  pid: z.string().min(1, 'PID cannot be empty'),
+  bundleLocation: z.string().optional()
+});
+
 export type BundleListInput = z.infer<typeof BundleListSchema>;
 export type BundleOperationInput = z.infer<typeof BundleOperationSchema>;
 export type BundleInstallInput = z.infer<typeof BundleInstallSchema>;
@@ -171,3 +177,4 @@ export type ConfigurationGetInput = z.infer<typeof ConfigurationGetSchema>;
 export type ConfigurationCreateInput = z.infer<typeof ConfigurationCreateSchema>;
 export type ConfigurationUpdateInput = z.infer<typeof ConfigurationUpdateSchema>;
 export type ConfigurationDeleteInput = z.infer<typeof ConfigurationDeleteSchema>;
+export type ConfigurationUnbindInput = z.infer<typeof ConfigurationUnbindSchema>;
