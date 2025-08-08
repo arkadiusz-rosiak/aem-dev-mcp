@@ -1,4 +1,4 @@
-import { createTimeout } from '@/types/index.js';
+import { createTimeout } from '@/utils/type-factories.js';
 
 export const TIMEOUTS = {
   HTTP_CLIENT: createTimeout(30000),

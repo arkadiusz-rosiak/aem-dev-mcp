@@ -4,10 +4,12 @@ import {
   AEMInstance, 
   ERROR_TYPES, 
   HEALTH_STATUS, 
-  HEALTH_COMPONENTS,
+  HEALTH_COMPONENTS
+} from '@/types/index.js';
+import {
   createTimeout,
   createMilliseconds
-} from '@/types/index.js';
+} from '@/utils/type-factories.js';
 import { AxiosResponse } from 'axios';
 
 jest.mock('@/services/http-client.js');

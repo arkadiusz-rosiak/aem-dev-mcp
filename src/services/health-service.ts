@@ -8,7 +8,6 @@ import {
   HEALTH_COMPONENTS,
   ERROR_TYPES,
   Milliseconds,
-  createMilliseconds,
   TimeoutMs,
   OperationResult,
   SystemMetrics,
@@ -17,15 +16,18 @@ import {
   RepositoryMetrics,
   RequestMetrics,
   BundleMetrics,
+  REPOSITORY_HEALTH
+} from '@/types/index.js';
+import {
+  createMilliseconds,
   createByteSize,
   createPercentage,
   createThreadCount,
   createRequestCount,
   createRequestsPerSecond,
   createBundleCount,
-  createBundleName,
-  REPOSITORY_HEALTH
-} from '@/types/index.js';
+  createBundleName
+} from '@/utils/type-factories.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { BundleData } from '@/schemas/bundle-data.schema.js';
 import { HTML_PATTERNS, extractFromHTML } from '@/schemas/html-patterns.schema.js';

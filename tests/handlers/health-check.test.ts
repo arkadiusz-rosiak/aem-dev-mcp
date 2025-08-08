@@ -7,15 +7,17 @@ import {
   HealthStatus, 
   HEALTH_STATUS, 
   HEALTH_COMPONENTS,
+  REPOSITORY_HEALTH
+} from '@/types/index.js';
+import {
   createByteSize,
   createPercentage,
   createThreadCount,
   createMilliseconds,
   createRequestCount,
   createRequestsPerSecond,
-  createBundleCount,
-  REPOSITORY_HEALTH
-} from '@/types/index.js';
+  createBundleCount
+} from '@/utils/type-factories.js';
 
 jest.mock('@/services/alias-resolver.js');
 jest.mock('@/services/parallel-executor.js');

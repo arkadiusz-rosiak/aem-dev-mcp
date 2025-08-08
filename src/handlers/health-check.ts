@@ -3,23 +3,25 @@ import {
   HealthStatus, 
   AEMInstance, 
   HEALTH_STATUS,
-  createConcurrencyLimit,
-  createRequestId,
   RequestId,
   TimeoutMs,
   ConcurrencyLimit,
   isNonEmptyArray,
   isAEMInstance,
   NonEmptyArray,
+  REPOSITORY_HEALTH
+} from '@/types/index.js';
+import {
+  createConcurrencyLimit,
+  createRequestId,
   createByteSize,
   createPercentage,
   createThreadCount,
   createMilliseconds,
   createRequestCount,
   createRequestsPerSecond,
-  createBundleCount,
-  REPOSITORY_HEALTH
-} from '@/types/index.js';
+  createBundleCount
+} from '@/utils/type-factories.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { HealthService } from '@/services/health-service.js';

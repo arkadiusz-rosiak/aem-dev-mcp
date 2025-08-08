@@ -54,15 +54,6 @@ export interface HealthCheckError {
   readonly statusCode?: number;
 }
 
-export const createHealthCheckError = (
-  type: ErrorType,
-  message: string,
-  options: { code?: string; statusCode?: number } = {}
-): HealthCheckError => ({
-  type,
-  message,
-  ...options
-});
 
 export const isHealthStatus = (value: unknown): value is HealthStatus => {
   return (
