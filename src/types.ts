@@ -64,15 +64,15 @@ export interface HealthStatus {
   readonly overall: HealthStatusType;
   readonly timestamp: Date;
   readonly checks: readonly HealthCheckResult[];
-  readonly diagnostics?: SystemDiagnostics;
+  readonly metrics: SystemMetrics;
 }
 
-export interface SystemDiagnostics {
-  readonly memory: MemoryDiagnostics;
-  readonly threads: ThreadDiagnostics;
-  readonly repository: RepositoryDiagnostics;
-  readonly requests: RequestDiagnostics;
-  readonly bundles: BundleDiagnostics;
+export interface SystemMetrics {
+  readonly memory: MemoryMetrics;
+  readonly threads: ThreadMetrics;
+  readonly repository: RepositoryMetrics;
+  readonly requests: RequestMetrics;
+  readonly bundles: BundleMetrics;
 }
 
 export type ByteSize = number & { readonly __brand: 'ByteSize' };
@@ -88,7 +88,7 @@ export const createPercentage = (value: number): Percentage => {
   return Math.round(value) as Percentage;
 };
 
-export interface MemoryDiagnostics {
+export interface MemoryMetrics {
   readonly heapUsed: ByteSize;
   readonly heapMax: ByteSize;
   readonly nonHeapUsed: ByteSize;
@@ -103,7 +103,7 @@ export const createThreadCount = (count: number): ThreadCount => {
   return count as ThreadCount;
 };
 
-export interface ThreadDiagnostics {
+export interface ThreadMetrics {
   readonly total: ThreadCount;
   readonly runnable: ThreadCount;
   readonly blocked: ThreadCount;
@@ -120,7 +120,7 @@ export const REPOSITORY_HEALTH = {
 
 export type RepositoryHealthType = typeof REPOSITORY_HEALTH[keyof typeof REPOSITORY_HEALTH];
 
-export interface RepositoryDiagnostics {
+export interface RepositoryMetrics {
   readonly size: ByteSize;
   readonly nodeCount: number;
   readonly indexHealth: RepositoryHealthType;
@@ -146,7 +146,7 @@ export const createRequestCount = (count: number): RequestCount => {
   return count as RequestCount;
 };
 
-export interface RequestDiagnostics {
+export interface RequestMetrics {
   readonly averageResponseTime: Milliseconds;
   readonly requestsPerSecond: RequestsPerSecond;
   readonly activeRequests: RequestCount;
@@ -167,7 +167,7 @@ export const createBundleName = (name: string): BundleName => {
   return name.trim() as BundleName;
 };
 
-export interface BundleDiagnostics {
+export interface BundleMetrics {
   readonly total: BundleCount;
   readonly active: BundleCount;
   readonly resolved: BundleCount;
@@ -177,7 +177,6 @@ export interface BundleDiagnostics {
 
 export interface HealthCheckRequest {
   readonly instances: readonly string[];
-  readonly detailed?: boolean;
 }
 
 export const ERROR_TYPES = {

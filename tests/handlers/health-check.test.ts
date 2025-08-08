@@ -12,6 +12,7 @@ import {
   createThreadCount,
   createMilliseconds,
   createRequestCount,
+  createRequestsPerSecond,
   createBundleCount,
   REPOSITORY_HEALTH
 } from '@/types.js';
@@ -20,7 +21,6 @@ jest.mock('@/services/alias-resolver.js');
 jest.mock('@/services/parallel-executor.js');
 jest.mock('@/services/http-client.js');
 jest.mock('@/services/health-service.js');
-jest.mock('@/services/diagnostics-service.js');
 jest.mock('@/utils/logger.js');
 
 describe('handleHealthCheck', () => {
@@ -33,21 +33,7 @@ describe('handleHealthCheck', () => {
     { url: 'http://publish-prod:4503', username: 'admin', password: 'admin' }
   ] as const;
 
-  const mockHealthStatus: HealthStatus = {
-    instance: 'http://author-prod:4502',
-    overall: HEALTH_STATUS.HEALTHY,
-    timestamp: new Date(),
-    checks: [
-      {
-        component: HEALTH_COMPONENTS.REACHABILITY,
-        status: HEALTH_STATUS.HEALTHY,
-        message: 'Instance reachable',
-        responseTime: createMilliseconds(150)
-      }
-    ]
-  };
-
-  const mockDiagnostics = {
+  const mockMetrics = {
     memory: {
       heapUsed: createByteSize(1073741824),
       heapMax: createByteSize(2147483648),
@@ -71,7 +57,7 @@ describe('handleHealthCheck', () => {
     },
     requests: {
       averageResponseTime: createMilliseconds(250),
-      requestsPerSecond: createRequestCount(10),
+      requestsPerSecond: createRequestsPerSecond(10),
       activeRequests: createRequestCount(5),
       queuedRequests: createRequestCount(2),
       errorRate: createPercentage(1)
@@ -84,6 +70,22 @@ describe('handleHealthCheck', () => {
       failed: []
     }
   };
+
+  const mockHealthStatus: HealthStatus = {
+    instance: 'http://author-prod:4502',
+    overall: HEALTH_STATUS.HEALTHY,
+    timestamp: new Date(),
+    checks: [
+      {
+        component: HEALTH_COMPONENTS.REACHABILITY,
+        status: HEALTH_STATUS.HEALTHY,
+        message: 'Instance reachable',
+        responseTime: createMilliseconds(150)
+      }
+    ],
+    metrics: mockMetrics
+  };
+
 
   beforeEach(() => {
     mockResolver = new AliasResolver('') as jest.Mocked<AliasResolver>;
@@ -141,19 +143,14 @@ describe('handleHealthCheck', () => {
       expect(mockResolver.resolveAlias).toHaveBeenCalledWith('author-prod');
     });
 
-    it('should handle detailed diagnostics parameter', async () => {
-      const args = { instances: [testInstances[0]], detailed: true };
-      
-      const healthStatusWithDiagnostics = {
-        ...mockHealthStatus,
-        diagnostics: mockDiagnostics
-      };
+    it('should always include metrics in response', async () => {
+      const args = { instances: [testInstances[0]] };
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
           instanceUrl: 'http://author-prod:4502',
           success: true,
-          data: healthStatusWithDiagnostics,
+          data: mockHealthStatus,
           duration: 200
         }
       ]);
@@ -163,8 +160,12 @@ describe('handleHealthCheck', () => {
       expect(result.isError).toBe(false);
       
       const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.metadata.detailed).toBe(true);
-      expect(responseData.results['http://author-prod:4502']).toHaveProperty('diagnostics');
+      expect(responseData.results['http://author-prod:4502']).toHaveProperty('metrics');
+      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('memory');
+      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('threads');
+      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('repository');
+      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('requests');
+      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('bundles');
     });
 
     it('should handle validation errors correctly', async () => {

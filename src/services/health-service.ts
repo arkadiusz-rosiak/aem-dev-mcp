@@ -10,10 +10,25 @@ import {
   Milliseconds,
   createMilliseconds,
   TimeoutMs,
-  OperationResult
+  OperationResult,
+  SystemMetrics,
+  MemoryMetrics,
+  ThreadMetrics,
+  RepositoryMetrics,
+  RequestMetrics,
+  BundleMetrics,
+  createByteSize,
+  createPercentage,
+  createThreadCount,
+  createRequestCount,
+  createRequestsPerSecond,
+  createBundleCount,
+  createBundleName,
+  REPOSITORY_HEALTH
 } from '@/types.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { BundleData } from '@/schemas/bundle-data.schema.js';
+import { HTML_PATTERNS, extractFromHTML } from '@/schemas/html-patterns.schema.js';
 import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
 import { isOk, isAuthError, isSuccessOrRedirect } from '@/utils/http-status.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
@@ -82,7 +97,8 @@ export class HealthService {
       }
     }
 
-    return this.#aggregateResults(instance, checks);
+    const metrics = await this.#collectSystemMetrics(instance);
+    return this.#aggregateResults(instance, checks, metrics);
   }
 
   #createReachabilityCheck(): HealthCheckFunction {
@@ -324,7 +340,7 @@ export class HealthService {
     };
   }
 
-  #aggregateResults(instance: AEMInstance, checks: readonly HealthCheckResult[]): HealthStatus {
+  #aggregateResults(instance: AEMInstance, checks: readonly HealthCheckResult[], metrics: SystemMetrics): HealthStatus {
     const hasUnhealthy = checks.some(check => check.status === HEALTH_STATUS.UNHEALTHY);
     const overallStatus = hasUnhealthy ? HEALTH_STATUS.UNHEALTHY : HEALTH_STATUS.HEALTHY;
     
@@ -332,10 +348,240 @@ export class HealthService {
       instance: instance.url,
       overall: overallStatus,
       timestamp: new Date(),
-      checks
+      checks,
+      metrics
     };
   }
   
+  async #collectSystemMetrics(instance: AEMInstance): Promise<SystemMetrics> {
+    const [memory, threads, repository, requests, bundles] = await Promise.allSettled([
+      this.#collectMemoryMetrics(instance),
+      this.#collectThreadMetrics(instance),
+      this.#collectRepositoryMetrics(instance),
+      this.#collectRequestMetrics(instance),
+      this.#collectBundleMetrics(instance)
+    ]);
+
+    return {
+      memory: memory.status === 'fulfilled' ? memory.value : this.#getDefaultMemoryMetrics(),
+      threads: threads.status === 'fulfilled' ? threads.value : this.#getDefaultThreadMetrics(),
+      repository: repository.status === 'fulfilled' ? repository.value : this.#getDefaultRepositoryMetrics(),
+      requests: requests.status === 'fulfilled' ? requests.value : this.#getDefaultRequestMetrics(),
+      bundles: bundles.status === 'fulfilled' ? bundles.value : this.#getDefaultBundleMetrics()
+    };
+  }
+
+  async #collectMemoryMetrics(instance: AEMInstance): Promise<MemoryMetrics> {
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/system/console/memoryusage',
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+      
+      if (isOk(response.status)) {
+        const html = response.data as string;
+        
+        const heapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemory) * 1024);
+        const heapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemoryMax) * 1024);
+        const nonHeapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemory) * 1024);
+        const nonHeapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemoryMax) * 1024);
+        
+        const percentage = heapMax > 0 
+          ? createPercentage((heapUsed / heapMax) * 100)
+          : createPercentage(0);
+
+        return {
+          heapUsed,
+          heapMax,
+          nonHeapUsed,
+          nonHeapMax,
+          percentage
+        };
+      }
+      
+      return this.#getDefaultMemoryMetrics();
+    } catch (error) {
+      return this.#getDefaultMemoryMetrics();
+    }
+  }
+
+  async #collectThreadMetrics(instance: AEMInstance): Promise<ThreadMetrics> {
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/system/console/threads',
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+      
+      if (isOk(response.status)) {
+        const html = response.data as string;
+        
+        return {
+          total: createThreadCount(extractFromHTML(html, HTML_PATTERNS.liveThreads)),
+          runnable: createThreadCount(extractFromHTML(html, HTML_PATTERNS.runnableThreads)),
+          blocked: createThreadCount(extractFromHTML(html, HTML_PATTERNS.blockedThreads)),
+          waiting: createThreadCount(extractFromHTML(html, HTML_PATTERNS.waitingThreads)),
+          timedWaiting: createThreadCount(extractFromHTML(html, HTML_PATTERNS.timedWaitingThreads)),
+          deadlocked: createThreadCount(extractFromHTML(html, HTML_PATTERNS.deadlockedThreads))
+        };
+      }
+      
+      return this.#getDefaultThreadMetrics();
+    } catch (error) {
+      return this.#getDefaultThreadMetrics();
+    }
+  }
+
+  async #collectRepositoryMetrics(instance: AEMInstance): Promise<RepositoryMetrics> {
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/oak:index',
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+      
+      const indexHealth = isOk(response.status) 
+        ? REPOSITORY_HEALTH.HEALTHY 
+        : REPOSITORY_HEALTH.DEGRADED;
+      
+      return {
+        size: createByteSize(0),
+        nodeCount: 0,
+        indexHealth,
+        revisions: 0
+      };
+    } catch (error) {
+      return this.#getDefaultRepositoryMetrics();
+    }
+  }
+
+  async #collectRequestMetrics(instance: AEMInstance): Promise<RequestMetrics> {
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/system/console/requests',
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+      
+      if (isOk(response.status)) {
+        const html = response.data as string;
+        
+        return {
+          averageResponseTime: createMilliseconds(extractFromHTML(html, HTML_PATTERNS.averageResponseTime)),
+          requestsPerSecond: createRequestsPerSecond(0),
+          activeRequests: createRequestCount(extractFromHTML(html, HTML_PATTERNS.activeRequests)),
+          queuedRequests: createRequestCount(extractFromHTML(html, HTML_PATTERNS.queuedRequests)),
+          errorRate: createPercentage(extractFromHTML(html, HTML_PATTERNS.errorRate))
+        };
+      }
+      
+      return this.#getDefaultRequestMetrics();
+    } catch (error) {
+      return this.#getDefaultRequestMetrics();
+    }
+  }
+
+  async #collectBundleMetrics(instance: AEMInstance): Promise<BundleMetrics> {
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/system/console/bundles.json',
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+      
+      if (isOk(response.status)) {
+        const bundleData = response.data as BundleData;
+        const bundles = bundleData.data ?? [];
+        
+        const active = createBundleCount(
+          bundles.filter((b) => b.state === 'Active').length
+        );
+        const resolved = createBundleCount(
+          bundles.filter((b) => b.state === 'Resolved').length
+        );
+        const installed = createBundleCount(
+          bundles.filter((b) => b.state === 'Installed').length
+        );
+        const failed = bundles
+          .filter((b) => b.state === 'Installed' || b.state === 'Resolved')
+          .map((b) => createBundleName(b.symbolicName));
+        
+        return {
+          total: createBundleCount(bundles.length),
+          active,
+          resolved,
+          installed,
+          failed
+        };
+      }
+      
+      return this.#getDefaultBundleMetrics();
+    } catch (error) {
+      return this.#getDefaultBundleMetrics();
+    }
+  }
+
+  #getDefaultMemoryMetrics(): MemoryMetrics {
+    return {
+      heapUsed: createByteSize(0),
+      heapMax: createByteSize(0),
+      nonHeapUsed: createByteSize(0),
+      nonHeapMax: createByteSize(0),
+      percentage: createPercentage(0)
+    };
+  }
+
+  #getDefaultThreadMetrics(): ThreadMetrics {
+    return {
+      total: createThreadCount(0),
+      runnable: createThreadCount(0),
+      blocked: createThreadCount(0),
+      waiting: createThreadCount(0),
+      timedWaiting: createThreadCount(0),
+      deadlocked: createThreadCount(0)
+    };
+  }
+
+  #getDefaultRepositoryMetrics(): RepositoryMetrics {
+    return {
+      size: createByteSize(0),
+      nodeCount: 0,
+      indexHealth: REPOSITORY_HEALTH.UNKNOWN,
+      revisions: 0
+    };
+  }
+
+  #getDefaultRequestMetrics(): RequestMetrics {
+    return {
+      averageResponseTime: createMilliseconds(0),
+      requestsPerSecond: createRequestsPerSecond(0),
+      activeRequests: createRequestCount(0),
+      queuedRequests: createRequestCount(0),
+      errorRate: createPercentage(0)
+    };
+  }
+
+  #getDefaultBundleMetrics(): BundleMetrics {
+    return {
+      total: createBundleCount(0),
+      active: createBundleCount(0),
+      resolved: createBundleCount(0),
+      installed: createBundleCount(0),
+      failed: []
+    };
+  }
+
   #classifyError(error: unknown): { type: ErrorType; message: string } {
     if (error && typeof error === 'object') {
       if ('code' in error) {

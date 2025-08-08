@@ -10,8 +10,7 @@ export const AEMInstanceSchema = z.object({
 
 export const HealthCheckSchema = z.object({
   aliases: z.array(z.string().min(1, 'Alias cannot be empty')).optional(),
-  instances: z.array(AEMInstanceSchema).optional(),
-  detailed: z.boolean().optional().default(false)
+  instances: z.array(AEMInstanceSchema).optional()
 }).refine(
   (data) => data.aliases || data.instances,
   { 

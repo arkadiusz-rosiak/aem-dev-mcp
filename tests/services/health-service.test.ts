@@ -44,7 +44,12 @@ describe('HealthService', () => {
         { status: 200, data: { s: [100, 100], data: [] } },
         { status: 200, data: '' },
         { status: 200, data: '' },
-        { status: 200, data: '' }
+        { status: 200, data: '' },
+        { status: 200, data: '<html>heap memory: 1024</html>' },
+        { status: 200, data: '<html>Live threads: 100</html>' },
+        { status: 200, data: {} },
+        { status: 200, data: '<html>activeRequests: 5</html>' },
+        { status: 200, data: { s: [100, 100], data: [] } }
       ];
 
       mockHttpClient.makeRequest
@@ -64,6 +69,12 @@ describe('HealthService', () => {
       expect(result.checks[1].component).toBe(HEALTH_COMPONENTS.BUNDLES);
       expect(result.checks[0].status).toBe(HEALTH_STATUS.HEALTHY);
       expect(result.timestamp).toBeInstanceOf(Date);
+      expect(result.metrics).toBeDefined();
+      expect(result.metrics.memory).toBeDefined();
+      expect(result.metrics.threads).toBeDefined();
+      expect(result.metrics.repository).toBeDefined();
+      expect(result.metrics.requests).toBeDefined();
+      expect(result.metrics.bundles).toBeDefined();
     });
 
     it('should return unhealthy status when response is slow', async () => {
@@ -80,6 +91,7 @@ describe('HealthService', () => {
       expect(result.overall).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks[0].status).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks[0].message).toBe('Slow response time');
+      expect(result.metrics).toBeDefined();
     });
 
     it('should return unhealthy status when reachability fails', async () => {
@@ -94,6 +106,7 @@ describe('HealthService', () => {
       expect(result.checks[0].component).toBe(HEALTH_COMPONENTS.REACHABILITY);
       expect(result.checks[0].status).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks[0].message).toContain(ERROR_TYPES.NETWORK_ERROR);
+      expect(result.metrics).toBeDefined();
     });
 
     it('should stop checking after reachability fails', async () => {
@@ -104,7 +117,9 @@ describe('HealthService', () => {
 
       expect(result.overall).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks).toHaveLength(1);
-      expect(mockHttpClient.makeRequest).toHaveBeenCalledTimes(1);
+      expect(mockHttpClient.makeRequest).toHaveBeenCalledWith(
+        testInstance, '/', 'GET', undefined, expect.any(Number)
+      );
     });
 
     it('should handle bundle check with failed bundles', async () => {

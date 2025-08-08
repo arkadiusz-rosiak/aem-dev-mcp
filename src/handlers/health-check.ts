@@ -10,12 +10,19 @@ import {
   ConcurrencyLimit,
   isNonEmptyArray,
   isAEMInstance,
-  NonEmptyArray
+  NonEmptyArray,
+  createByteSize,
+  createPercentage,
+  createThreadCount,
+  createMilliseconds,
+  createRequestCount,
+  createRequestsPerSecond,
+  createBundleCount,
+  REPOSITORY_HEALTH
 } from '@/types.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { HealthService } from '@/services/health-service.js';
-import { DiagnosticsService } from '@/services/diagnostics-service.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { createErrorResponse } from '@/utils/errors.js';
 import { createLogger } from '@/utils/logger.js';
@@ -57,7 +64,6 @@ interface HealthCheckSummary {
 
 interface HealthCheckMetadata {
   readonly timestamp: string;
-  readonly detailed: boolean;
   readonly totalInstances: number;
   readonly averageResponseTime: number;
 }
@@ -108,7 +114,44 @@ const createUnhealthyStatus = (instanceUrl: string, error: string): HealthStatus
     component: 'system',
     status: HEALTH_STATUS.UNHEALTHY,
     message: error
-  }]
+  }],
+  metrics: {
+    memory: {
+      heapUsed: createByteSize(0),
+      heapMax: createByteSize(0),
+      nonHeapUsed: createByteSize(0),
+      nonHeapMax: createByteSize(0),
+      percentage: createPercentage(0)
+    },
+    threads: {
+      total: createThreadCount(0),
+      runnable: createThreadCount(0),
+      blocked: createThreadCount(0),
+      waiting: createThreadCount(0),
+      timedWaiting: createThreadCount(0),
+      deadlocked: createThreadCount(0)
+    },
+    repository: {
+      size: createByteSize(0),
+      nodeCount: 0,
+      indexHealth: REPOSITORY_HEALTH.UNKNOWN,
+      revisions: 0
+    },
+    requests: {
+      averageResponseTime: createMilliseconds(0),
+      requestsPerSecond: createRequestsPerSecond(0),
+      activeRequests: createRequestCount(0),
+      queuedRequests: createRequestCount(0),
+      errorRate: createPercentage(0)
+    },
+    bundles: {
+      total: createBundleCount(0),
+      active: createBundleCount(0),
+      resolved: createBundleCount(0),
+      installed: createBundleCount(0),
+      failed: []
+    }
+  }
 });
 
 export async function handleHealthCheck(
@@ -125,7 +168,6 @@ export async function handleHealthCheck(
     const config = createHealthCheckConfig();
     
     const healthService = new HealthService(client);
-    const diagnosticsService = new DiagnosticsService(client);
     
     const instances = await resolveInstances(validatedInput, resolver);
     
@@ -136,18 +178,15 @@ export async function handleHealthCheck(
     const results = await executeHealthChecks(
       instances,
       healthService,
-      diagnosticsService,
       executor,
       requestId,
-      config,
-      validatedInput.detailed
+      config
     );
     
     const response = buildHealthCheckResponse(
       requestId,
       results,
-      instances,
-      validatedInput.detailed
+      instances
     );
     
     return {
@@ -200,30 +239,14 @@ async function resolveInstances(
 async function executeHealthChecks(
   instances: NonEmptyArray<AEMInstance>,
   healthService: HealthService,
-  diagnosticsService: DiagnosticsService,
   executor: ParallelExecutor,
   requestId: RequestId,
-  config: HealthCheckConfig,
-  detailed: boolean
+  config: HealthCheckConfig
 ): Promise<HealthCheckResult[]> {
   return executor.executeOnInstances(
     instances,
     async (instance) => {
-      const healthStatus = await healthService.performHealthCheck(instance);
-      
-      if (detailed && healthStatus.overall !== HEALTH_STATUS.UNHEALTHY) {
-        try {
-          const diagnostics = await diagnosticsService.collectDiagnostics(instance);
-          return {
-            ...healthStatus,
-            diagnostics
-          };
-        } catch (diagnosticsError) {
-          return healthStatus;
-        }
-      }
-      
-      return healthStatus;
+      return await healthService.performHealthCheck(instance);
     },
     { 
       requestId,
@@ -236,8 +259,7 @@ async function executeHealthChecks(
 function buildHealthCheckResponse(
   requestId: RequestId,
   results: HealthCheckResult[],
-  instances: readonly AEMInstance[],
-  detailed: boolean
+  instances: readonly AEMInstance[]
 ): HealthCheckResponse {
   const healthResults: Record<string, HealthStatus> = {};
   const validHealthStatuses: HealthStatus[] = [];
@@ -267,7 +289,6 @@ function buildHealthCheckResponse(
     results: healthResults,
     metadata: {
       timestamp: new Date().toISOString(),
-      detailed,
       totalInstances: instances.length,
       averageResponseTime
     }
@@ -276,7 +297,7 @@ function buildHealthCheckResponse(
 
 export const healthCheckTool = {
   name: 'aem_health_check',
-  description: 'Performs comprehensive health checks on AEM instances with optional detailed diagnostics including memory, threads, bundles, and system metrics',
+  description: 'Performs comprehensive health checks on AEM instances including memory, threads, bundles, requests, and repository metrics',
   inputSchema: {
     type: 'object',
     properties: {
@@ -315,11 +336,6 @@ export const healthCheckTool = {
         },
         description: `Direct instance configuration (overrides aliases). Maximum ${MAX_CONCURRENT_INSTANCES} instances allowed.`,
         maxItems: MAX_CONCURRENT_INSTANCES
-      },
-      detailed: {
-        type: 'boolean',
-        description: 'Include detailed diagnostic information (memory usage, thread states, bundle status, request metrics, repository health)',
-        default: false
       }
     },
     oneOf: [
