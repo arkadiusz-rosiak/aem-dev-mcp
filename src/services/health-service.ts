@@ -3,7 +3,6 @@ import {
   HealthStatus, 
   HealthCheckResult, 
   ErrorType, 
-  HealthStatusType,
   HealthComponentType,
   HEALTH_STATUS,
   HEALTH_COMPONENTS,
@@ -96,7 +95,7 @@ export class HealthService {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.REACHABILITY,
             status: responseTime > this.#config.slowResponseThreshold 
-              ? HEALTH_STATUS.DEGRADED 
+              ? HEALTH_STATUS.UNHEALTHY 
               : HEALTH_STATUS.HEALTHY,
             message: responseTime > this.#config.slowResponseThreshold 
               ? 'Slow response time' 
@@ -301,7 +300,7 @@ export class HealthService {
         } else if (isAuthError(response.status)) {
           return createSuccessResult({
             component: HEALTH_COMPONENTS.CONSOLE,
-            status: HEALTH_STATUS.DEGRADED,
+            status: HEALTH_STATUS.UNHEALTHY,
             message: 'Console authentication required',
             responseTime
           }, responseTime);
@@ -326,17 +325,8 @@ export class HealthService {
   }
 
   #aggregateResults(instance: AEMInstance, checks: readonly HealthCheckResult[]): HealthStatus {
-    const statusPriority: Record<HealthStatusType, number> = {
-      [HEALTH_STATUS.UNHEALTHY]: 2,
-      [HEALTH_STATUS.DEGRADED]: 1,
-      [HEALTH_STATUS.HEALTHY]: 0
-    } as const;
-
-    const overallStatus = checks.reduce((maxStatus: HealthStatusType, check) => {
-      return statusPriority[check.status] > statusPriority[maxStatus] 
-        ? check.status 
-        : maxStatus;
-    }, HEALTH_STATUS.HEALTHY as HealthStatusType);
+    const hasUnhealthy = checks.some(check => check.status === HEALTH_STATUS.UNHEALTHY);
+    const overallStatus = hasUnhealthy ? HEALTH_STATUS.UNHEALTHY : HEALTH_STATUS.HEALTHY;
     
     return {
       instance: instance.url,

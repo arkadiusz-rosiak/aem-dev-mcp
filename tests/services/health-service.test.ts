@@ -66,7 +66,7 @@ describe('HealthService', () => {
       expect(result.timestamp).toBeInstanceOf(Date);
     });
 
-    it('should return degraded status when response is slow', async () => {
+    it('should return unhealthy status when response is slow', async () => {
       mockHttpClient.makeRequest
         .mockImplementation(() => {
           jest.advanceTimersByTime(6000); // Slow response > 5000ms
@@ -77,8 +77,8 @@ describe('HealthService', () => {
       jest.runAllTimers();
       const result = await resultPromise;
 
-      expect(result.overall).toBe(HEALTH_STATUS.DEGRADED);
-      expect(result.checks[0].status).toBe(HEALTH_STATUS.DEGRADED);
+      expect(result.overall).toBe(HEALTH_STATUS.UNHEALTHY);
+      expect(result.checks[0].status).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks[0].message).toBe('Slow response time');
     });
 
@@ -180,7 +180,7 @@ describe('HealthService', () => {
       expect(result.checks[3].message).toBe('Repository requires authentication (normal)');
     });
 
-    it('should handle console check authentication as degraded', async () => {
+    it('should handle console check authentication as unhealthy', async () => {
       mockHttpClient.makeRequest
         .mockResolvedValueOnce({ status: 200, data: {} } as AxiosResponse)
         .mockResolvedValueOnce({ status: 200, data: { s: [100, 100], data: [] } } as AxiosResponse)
@@ -191,7 +191,7 @@ describe('HealthService', () => {
       const result = await healthService.performHealthCheck(testInstance);
 
       expect(result.checks[4].component).toBe(HEALTH_COMPONENTS.CONSOLE);
-      expect(result.checks[4].status).toBe(HEALTH_STATUS.DEGRADED);
+      expect(result.checks[4].status).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks[4].message).toBe('Console authentication required');
     });
 
@@ -201,11 +201,11 @@ describe('HealthService', () => {
         .mockResolvedValueOnce({ status: 200, data: { s: [100, 100], data: [] } } as AxiosResponse) // healthy
         .mockResolvedValueOnce({ status: 200, data: '' } as AxiosResponse) // healthy
         .mockResolvedValueOnce({ status: 200, data: '' } as AxiosResponse) // healthy
-        .mockResolvedValueOnce({ status: 403, data: '' } as AxiosResponse); // degraded
+        .mockResolvedValueOnce({ status: 403, data: '' } as AxiosResponse); // unhealthy
 
       const result = await healthService.performHealthCheck(testInstance);
 
-      expect(result.overall).toBe(HEALTH_STATUS.DEGRADED);
+      expect(result.overall).toBe(HEALTH_STATUS.UNHEALTHY);
     });
 
     it('should use custom configuration when provided', () => {

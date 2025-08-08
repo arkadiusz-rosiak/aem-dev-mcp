@@ -35,8 +35,7 @@ export interface InstanceOperationResult<T> {
 
 export const HEALTH_STATUS = {
   HEALTHY: 'healthy',
-  UNHEALTHY: 'unhealthy',
-  DEGRADED: 'degraded'
+  UNHEALTHY: 'unhealthy'
 } as const;
 
 export type HealthStatusType = typeof HEALTH_STATUS[keyof typeof HEALTH_STATUS];

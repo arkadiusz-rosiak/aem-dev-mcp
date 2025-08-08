@@ -53,7 +53,6 @@ interface HealthCheckSummary {
   readonly total: number;
   readonly healthy: number;
   readonly unhealthy: number;
-  readonly degraded: number;
 }
 
 interface HealthCheckMetadata {
@@ -78,8 +77,6 @@ const calculateSummary = (healthStatuses: readonly HealthStatus[]): HealthCheckS
           return { ...summary, healthy: summary.healthy + 1 };
         case HEALTH_STATUS.UNHEALTHY:
           return { ...summary, unhealthy: summary.unhealthy + 1 };
-        case HEALTH_STATUS.DEGRADED:
-          return { ...summary, degraded: summary.degraded + 1 };
         default:
           return summary;
       }
@@ -87,8 +84,7 @@ const calculateSummary = (healthStatuses: readonly HealthStatus[]): HealthCheckS
     {
       total: healthStatuses.length,
       healthy: 0,
-      unhealthy: 0,
-      degraded: 0
+      unhealthy: 0
     } as HealthCheckSummary
   );
 };
