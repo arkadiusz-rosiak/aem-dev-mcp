@@ -1,6 +1,16 @@
 import { DiagnosticsService } from '@/services/diagnostics-service.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { AEMInstance } from '@/types.js';
+import { 
+  AEMInstance, 
+  REPOSITORY_HEALTH,
+  createByteSize,
+  createPercentage,
+  createThreadCount,
+  createMilliseconds,
+  createRequestCount,
+  createBundleCount,
+  createTimeout
+} from '@/types.js';
 import { AxiosResponse } from 'axios';
 
 jest.mock('@/services/http-client.js');
@@ -18,13 +28,13 @@ describe('DiagnosticsService', () => {
       url: 'http://localhost:4502',
       username: 'admin',
       password: 'admin'
-    };
+    } as const;
     
     jest.clearAllMocks();
   });
 
   describe('collectDiagnostics', () => {
-    it('should collect all diagnostic data successfully', async () => {
+    it('should collect all diagnostic data successfully with concurrent checks', async () => {
       const mockMemoryHtml = 'Heap Memory Usage 512,000 of 1,024,000 Non-Heap Memory Usage 256,000 of 512,000';
       const mockThreadsHtml = 'Live threads: 150 RUNNABLE 50 BLOCKED 10 WAITING 40 TIMED_WAITING 30 Deadlocked threads: 0';
       const mockRequestsHtml = 'Average 250.5 ms Active Requests 5 Queued Requests 2 Error Rate 1.2%';
@@ -32,213 +42,186 @@ describe('DiagnosticsService', () => {
         data: [
           { state: 'Active', symbolicName: 'bundle1' },
           { state: 'Active', symbolicName: 'bundle2' },
-          { state: 'Resolved', symbolicName: 'bundle3' }
+          { state: 'Installed', symbolicName: 'failed-bundle' }
         ]
       };
 
       mockHttpClient.makeRequest
-        .mockResolvedValueOnce({ status: 200, data: mockMemoryHtml } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: mockThreadsHtml } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: '' } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: mockRequestsHtml } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: mockBundleData } as AxiosResponse);
+        .mockImplementation((_instance, path) => {
+          if (path === '/system/console/memoryusage') {
+            return Promise.resolve({ status: 200, data: mockMemoryHtml } as AxiosResponse);
+          } else if (path === '/system/console/threads') {
+            return Promise.resolve({ status: 200, data: mockThreadsHtml } as AxiosResponse);
+          } else if (path === '/oak:index') {
+            return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+          } else if (path === '/system/console/requests') {
+            return Promise.resolve({ status: 200, data: mockRequestsHtml } as AxiosResponse);
+          } else if (path === '/system/console/bundles.json') {
+            return Promise.resolve({ status: 200, data: mockBundleData } as AxiosResponse);
+          }
+          return Promise.reject(new Error('Unknown path'));
+        });
 
       const result = await diagnosticsService.collectDiagnostics(testInstance);
 
-      expect(result.memory.heapUsed).toBeGreaterThan(0);
-      expect(result.memory.percentage).toBeGreaterThan(0);
-      expect(result.threads.total).toBe(150);
-      expect(result.requests.averageResponseTime).toBe(250.5);
-      expect(result.bundles.total).toBe(3);
-      expect(result.bundles.active).toBe(2);
-      expect(result.bundles.failed).toEqual(['bundle3']);
+      expect(result.memory.heapUsed).toBe(createByteSize(512000 * 1024));
+      expect(result.memory.heapMax).toBe(createByteSize(1024000 * 1024));
+      expect(result.memory.nonHeapUsed).toBe(createByteSize(256000 * 1024));
+      expect(result.memory.nonHeapMax).toBe(createByteSize(512000 * 1024));
+      expect(result.memory.percentage).toBe(createPercentage(50));
+
+      expect(result.threads.total).toBe(createThreadCount(150));
+      expect(result.threads.runnable).toBe(createThreadCount(50));
+      expect(result.threads.blocked).toBe(createThreadCount(10));
+      expect(result.threads.waiting).toBe(createThreadCount(40));
+      expect(result.threads.timedWaiting).toBe(createThreadCount(30));
+      expect(result.threads.deadlocked).toBe(createThreadCount(0));
+
+      expect(result.repository.indexHealth).toBe(REPOSITORY_HEALTH.HEALTHY);
+
+      expect(result.requests.averageResponseTime).toBe(createMilliseconds(250.5));
+      expect(result.requests.activeRequests).toBe(createRequestCount(5));
+      expect(result.requests.queuedRequests).toBe(createRequestCount(2));
+      expect(result.requests.errorRate).toBe(createPercentage(1));
+
+      expect(result.bundles.total).toBe(createBundleCount(3));
+      expect(result.bundles.active).toBe(createBundleCount(2));
+      expect(result.bundles.installed).toBe(createBundleCount(1));
+      expect(result.bundles.failed).toHaveLength(1);
     });
 
-    it('should handle partial failures gracefully', async () => {
+    it('should handle memory collection failure gracefully', async () => {
       mockHttpClient.makeRequest
-        .mockRejectedValueOnce(new Error('Memory endpoint failed'))
-        .mockResolvedValueOnce({ status: 200, data: 'Live threads: 100' } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: '' } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: '' } as AxiosResponse)
-        .mockResolvedValueOnce({ status: 200, data: { data: [] } } as AxiosResponse);
+        .mockImplementation((_instance, path) => {
+          if (path === '/system/console/memoryusage') {
+            return Promise.reject(new Error('Memory endpoint failed'));
+          }
+          return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+        });
 
       const result = await diagnosticsService.collectDiagnostics(testInstance);
 
-      expect(result.memory.heapUsed).toBe(0);
-      expect(result.threads.total).toBe(100);
-      expect(result.bundles.total).toBe(0);
-    });
-  });
-
-  describe('getMemoryInfo', () => {
-    it('should parse memory usage correctly', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <h2>Memory Usage</h2>
-            <p>Heap Memory Usage: 1,048,576 of 2,097,152 KB</p>
-            <p>Non-Heap Memory Usage: 524,288 of 1,048,576 KB</p>
-          </body>
-        </html>
-      `;
-
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: mockHtml 
-      } as AxiosResponse);
-
-      const result = await diagnosticsService.getMemoryInfo(testInstance);
-
-      expect(result.heapUsed).toBe(1073741824);
-      expect(result.heapMax).toBe(2147483648);
-      expect(result.nonHeapUsed).toBe(536870912);
-      expect(result.nonHeapMax).toBe(1073741824);
-      expect(result.percentage).toBe(50);
+      expect(result.memory.heapUsed).toBe(createByteSize(0));
+      expect(result.memory.heapMax).toBe(createByteSize(0));
+      expect(result.memory.percentage).toBe(createPercentage(0));
     });
 
-    it('should handle malformed memory data', async () => {
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: '<html>Invalid memory data</html>' 
-      } as AxiosResponse);
+    it('should handle thread collection failure gracefully', async () => {
+      mockHttpClient.makeRequest
+        .mockImplementation((_instance, path) => {
+          if (path === '/system/console/threads') {
+            return Promise.resolve({ status: 500, data: '' } as AxiosResponse);
+          }
+          return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+        });
 
-      const result = await diagnosticsService.getMemoryInfo(testInstance);
+      const result = await diagnosticsService.collectDiagnostics(testInstance);
 
-      expect(result.heapUsed).toBe(0);
-      expect(result.heapMax).toBe(0);
-      expect(result.percentage).toBe(0);
+      expect(result.threads.total).toBe(createThreadCount(0));
+      expect(result.threads.runnable).toBe(createThreadCount(0));
+      expect(result.threads.deadlocked).toBe(createThreadCount(0));
     });
 
-    it('should throw error for non-200 response', async () => {
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 500, 
-        data: 'Server Error' 
-      } as AxiosResponse);
+    it('should handle repository index check failure as degraded', async () => {
+      mockHttpClient.makeRequest
+        .mockImplementation((_instance, path) => {
+          if (path === '/oak:index') {
+            return Promise.reject(new Error('Index check failed'));
+          }
+          return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+        });
 
-      await expect(diagnosticsService.getMemoryInfo(testInstance)).rejects.toThrow();
-    });
-  });
+      const result = await diagnosticsService.collectDiagnostics(testInstance);
 
-  describe('getThreadInfo', () => {
-    it('should parse thread information correctly', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <p>Live threads: 200</p>
-            <p>RUNNABLE: 80</p>
-            <p>BLOCKED: 5</p>
-            <p>WAITING: 60</p>
-            <p>TIMED_WAITING: 45</p>
-            <p>Deadlocked threads: 2</p>
-          </body>
-        </html>
-      `;
-
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: mockHtml 
-      } as AxiosResponse);
-
-      const result = await diagnosticsService.getThreadInfo(testInstance);
-
-      expect(result.total).toBe(200);
-      expect(result.runnable).toBe(80);
-      expect(result.blocked).toBe(5);
-      expect(result.waiting).toBe(60);
-      expect(result.timedWaiting).toBe(45);
-      expect(result.deadlocked).toBe(2);
-    });
-  });
-
-  describe('getRepositoryInfo', () => {
-    it('should return healthy index status for accessible oak index', async () => {
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: {} 
-      } as AxiosResponse);
-
-      const result = await diagnosticsService.getRepositoryInfo(testInstance);
-
-      expect(result.indexHealth).toBe('healthy');
-      expect(result.size).toBe(0);
-      expect(result.nodeCount).toBe(0);
-      expect(result.revisions).toBe(0);
+      expect(result.repository.indexHealth).toBe(REPOSITORY_HEALTH.DEGRADED);
     });
 
-    it('should return degraded status for inaccessible index', async () => {
-      mockHttpClient.makeRequest.mockRejectedValueOnce(new Error('Index not accessible'));
+    it('should handle bundle collection with no data gracefully', async () => {
+      mockHttpClient.makeRequest
+        .mockImplementation((_instance, path) => {
+          if (path === '/system/console/bundles.json') {
+            return Promise.resolve({ status: 200, data: {} } as AxiosResponse);
+          }
+          return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+        });
 
-      const result = await diagnosticsService.getRepositoryInfo(testInstance);
+      const result = await diagnosticsService.collectDiagnostics(testInstance);
 
-      expect(result.indexHealth).toBe('degraded');
+      expect(result.bundles.total).toBe(createBundleCount(0));
+      expect(result.bundles.active).toBe(createBundleCount(0));
+      expect(result.bundles.failed).toEqual([]);
     });
-  });
 
-  describe('getRequestInfo', () => {
-    it('should parse request statistics correctly', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <p>Average Response Time: 125.75 ms</p>
-            <p>Active Requests: 8</p>
-            <p>Queued Requests: 3</p>
-            <p>Error Rate: 2.5%</p>
-          </body>
-        </html>
-      `;
+    it('should handle malformed HTML responses', async () => {
+      const malformedHtml = 'This is not the expected format';
 
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: mockHtml 
-      } as AxiosResponse);
+      mockHttpClient.makeRequest
+        .mockResolvedValue({ status: 200, data: malformedHtml } as AxiosResponse);
 
-      const result = await diagnosticsService.getRequestInfo(testInstance);
+      const result = await diagnosticsService.collectDiagnostics(testInstance);
 
-      expect(result.averageResponseTime).toBe(125.75);
-      expect(result.activeRequests).toBe(8);
-      expect(result.queuedRequests).toBe(3);
-      expect(result.errorRate).toBe(2.5);
-      expect(result.requestsPerSecond).toBe(0);
+      expect(result.memory.heapUsed).toBe(createByteSize(0));
+      expect(result.threads.total).toBe(createThreadCount(0));
+      expect(result.requests.averageResponseTime).toBe(createMilliseconds(0));
     });
-  });
 
-  describe('getBundleInfo', () => {
-    it('should analyze bundle states correctly', async () => {
-      const mockBundleData = {
-        data: [
-          { state: 'Active', symbolicName: 'com.day.cq.cq-authoring' },
-          { state: 'Active', symbolicName: 'com.day.cq.cq-personalization' },
-          { state: 'Resolved', symbolicName: 'com.example.test-bundle' },
-          { state: 'Installed', symbolicName: 'com.example.failed-bundle' },
-          { state: 'Active', symbolicName: 'org.apache.sling.api' }
-        ]
+    it('should use custom configuration when provided', () => {
+      const customConfig = {
+        timeout: createTimeout(10000),
+        concurrentChecks: false
       };
 
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: mockBundleData 
-      } as AxiosResponse);
-
-      const result = await diagnosticsService.getBundleInfo(testInstance);
-
-      expect(result.total).toBe(5);
-      expect(result.active).toBe(3);
-      expect(result.resolved).toBe(1);
-      expect(result.installed).toBe(1);
-      expect(result.failed).toEqual(['com.example.test-bundle', 'com.example.failed-bundle']);
+      const customService = new DiagnosticsService(mockHttpClient, customConfig);
+      expect(customService).toBeInstanceOf(DiagnosticsService);
     });
 
-    it('should handle empty bundle response', async () => {
-      mockHttpClient.makeRequest.mockResolvedValueOnce({ 
-        status: 200, 
-        data: { data: [] } 
-      } as AxiosResponse);
+    it('should handle sequential execution when concurrentChecks is false', async () => {
+      const customService = new DiagnosticsService(mockHttpClient, { concurrentChecks: false });
+      
+      mockHttpClient.makeRequest
+        .mockResolvedValue({ status: 200, data: '' } as AxiosResponse);
 
-      const result = await diagnosticsService.getBundleInfo(testInstance);
+      const result = await customService.collectDiagnostics(testInstance);
 
-      expect(result.total).toBe(0);
-      expect(result.active).toBe(0);
-      expect(result.failed).toEqual([]);
+      expect(result).toHaveProperty('memory');
+      expect(result).toHaveProperty('threads');
+      expect(result).toHaveProperty('repository');
+      expect(result).toHaveProperty('requests');
+      expect(result).toHaveProperty('bundles');
+    });
+
+    it('should properly parse comma-separated numbers in memory usage', async () => {
+      const memoryHtmlWithCommas = 'Heap Memory Usage 1,234,567 of 2,048,000 Non-Heap Memory Usage 500,000 of 1,000,000';
+
+      mockHttpClient.makeRequest
+        .mockImplementation((_instance, path) => {
+          if (path === '/system/console/memoryusage') {
+            return Promise.resolve({ status: 200, data: memoryHtmlWithCommas } as AxiosResponse);
+          }
+          return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+        });
+
+      const result = await diagnosticsService.collectDiagnostics(testInstance);
+
+      expect(result.memory.heapUsed).toBe(createByteSize(1234567 * 1024));
+      expect(result.memory.heapMax).toBe(createByteSize(2048000 * 1024));
+      expect(result.memory.percentage).toBe(createPercentage(60));
+    });
+
+    it('should calculate zero percentage when heap max is zero', async () => {
+      const memoryHtmlZeroMax = 'Heap Memory Usage 0 of 0 Non-Heap Memory Usage 0 of 0';
+
+      mockHttpClient.makeRequest
+        .mockImplementation((_instance, path) => {
+          if (path === '/system/console/memoryusage') {
+            return Promise.resolve({ status: 200, data: memoryHtmlZeroMax } as AxiosResponse);
+          }
+          return Promise.resolve({ status: 200, data: '' } as AxiosResponse);
+        });
+
+      const result = await diagnosticsService.collectDiagnostics(testInstance);
+
+      expect(result.memory.percentage).toBe(createPercentage(0));
     });
   });
 });

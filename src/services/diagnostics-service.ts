@@ -5,254 +5,415 @@ import {
   ThreadDiagnostics, 
   RepositoryDiagnostics, 
   RequestDiagnostics, 
-  BundleDiagnostics 
+  BundleDiagnostics,
+  RepositoryHealthType,
+  REPOSITORY_HEALTH,
+  createByteSize,
+  createPercentage,
+  createThreadCount,
+  createMilliseconds,
+  createRequestCount,
+  createRequestsPerSecond,
+  createBundleCount,
+  createBundleName,
+  TimeoutMs,
+  createTimeout,
+  OperationResult
 } from '@/types.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { Logger } from '@/utils/logger.js';
 
+interface DiagnosticsConfig {
+  readonly timeout: TimeoutMs;
+  readonly concurrentChecks: boolean;
+}
+
+const DEFAULT_CONFIG: DiagnosticsConfig = {
+  timeout: createTimeout(15000),
+  concurrentChecks: true
+} as const;
+
+type DiagnosticsCollector<T> = (instance: AEMInstance) => Promise<OperationResult<T>>;
+
+interface HTMLPatternMatcher {
+  readonly pattern: RegExp;
+  readonly transform: (match: RegExpMatchArray) => number;
+}
+
+const createHTMLMatcher = (pattern: RegExp, transform: (match: RegExpMatchArray) => number): HTMLPatternMatcher => ({
+  pattern,
+  transform
+});
+
+const parseCommaSeparatedNumber = (value: string): number => 
+  parseInt(value.replace(/,/g, ''), 10);
+
+const HTML_PATTERNS = {
+  heapMemory: createHTMLMatcher(
+    /Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
+    (match) => parseCommaSeparatedNumber(match[1])
+  ),
+  heapMemoryMax: createHTMLMatcher(
+    /Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
+    (match) => parseCommaSeparatedNumber(match[2])
+  ),
+  nonHeapMemory: createHTMLMatcher(
+    /Non-Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
+    (match) => parseCommaSeparatedNumber(match[1])
+  ),
+  nonHeapMemoryMax: createHTMLMatcher(
+    /Non-Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
+    (match) => parseCommaSeparatedNumber(match[2])
+  ),
+  liveThreads: createHTMLMatcher(
+    /Live threads:\s*(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  runnableThreads: createHTMLMatcher(
+    /RUNNABLE.*?(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  blockedThreads: createHTMLMatcher(
+    /BLOCKED.*?(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  waitingThreads: createHTMLMatcher(
+    /WAITING.*?(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  timedWaitingThreads: createHTMLMatcher(
+    /TIMED_WAITING.*?(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  deadlockedThreads: createHTMLMatcher(
+    /Deadlocked threads:\s*(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  averageResponseTime: createHTMLMatcher(
+    /Average.*?(\d+(?:\.\d+)?)\s*ms/,
+    (match) => parseFloat(match[1])
+  ),
+  activeRequests: createHTMLMatcher(
+    /Active Requests.*?(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  queuedRequests: createHTMLMatcher(
+    /Queued Requests.*?(\d+)/,
+    (match) => parseInt(match[1], 10)
+  ),
+  errorRate: createHTMLMatcher(
+    /Error Rate.*?(\d+(?:\.\d+)?)%/,
+    (match) => parseFloat(match[1])
+  )
+} as const;
+
+const extractFromHTML = (html: string, matcher: HTMLPatternMatcher): number => {
+  const match = html.match(matcher.pattern);
+  return match ? matcher.transform(match) : 0;
+};
+
+interface BundleData {
+  readonly data?: Array<{
+    readonly state: string;
+    readonly symbolicName: string;
+  }>;
+}
+
+const createSuccessResult = <T>(data: T): OperationResult<T> => ({
+  success: true,
+  data,
+  duration: 0
+});
+
+const createFailureResult = <E extends Error>(error: E): OperationResult<never, E> => ({
+  success: false,
+  error,
+  duration: 0
+});
+
 export class DiagnosticsService {
-  private httpClient: AemHttpClient;
-  private logger: Logger;
-  
-  constructor(httpClient: AemHttpClient) {
-    this.httpClient = httpClient;
-    this.logger = new Logger();
+  readonly #httpClient: AemHttpClient;
+  readonly #logger: Logger;
+  readonly #config: DiagnosticsConfig;
+
+  constructor(httpClient: AemHttpClient, config: Partial<DiagnosticsConfig> = {}) {
+    this.#httpClient = httpClient;
+    this.#logger = new Logger();
+    this.#config = { ...DEFAULT_CONFIG, ...config };
   }
   
   async collectDiagnostics(instance: AEMInstance): Promise<SystemDiagnostics> {
-    const [memory, threads, repository, requests, bundles] = await Promise.allSettled([
-      this.getMemoryInfo(instance),
-      this.getThreadInfo(instance),
-      this.getRepositoryInfo(instance),
-      this.getRequestInfo(instance),
-      this.getBundleInfo(instance)
-    ]);
-    
-    return {
-      memory: memory.status === 'fulfilled' ? memory.value : this.getDefaultMemoryDiagnostics(),
-      threads: threads.status === 'fulfilled' ? threads.value : this.getDefaultThreadDiagnostics(),
-      repository: repository.status === 'fulfilled' ? repository.value : this.getDefaultRepositoryDiagnostics(),
-      requests: requests.status === 'fulfilled' ? requests.value : this.getDefaultRequestDiagnostics(),
-      bundles: bundles.status === 'fulfilled' ? bundles.value : this.getDefaultBundleDiagnostics()
-    };
-  }
-  
-  async getMemoryInfo(instance: AEMInstance): Promise<MemoryDiagnostics> {
-    try {
-      const response = await this.httpClient.makeRequest(
-        instance,
-        '/system/console/memoryusage',
-        'GET',
-        undefined,
-        15000
+    const collectors: readonly DiagnosticsCollector<unknown>[] = [
+      this.#createMemoryCollector(),
+      this.#createThreadCollector(),
+      this.#createRepositoryCollector(),
+      this.#createRequestCollector(),
+      this.#createBundleCollector()
+    ] as const;
+
+    if (this.#config.concurrentChecks) {
+      const results = await Promise.allSettled(
+        collectors.map(collector => collector(instance))
       );
-      
-      if (response.status === 200) {
-        const html = response.data as string;
-        
-        const heapMatch = html.match(/Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s);
-        const nonHeapMatch = html.match(/Non-Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s);
-        
-        const heapUsed = heapMatch ? parseInt(heapMatch[1].replace(/,/g, '')) * 1024 : 0;
-        const heapMax = heapMatch ? parseInt(heapMatch[2].replace(/,/g, '')) * 1024 : 0;
-        const nonHeapUsed = nonHeapMatch ? parseInt(nonHeapMatch[1].replace(/,/g, '')) * 1024 : 0;
-        const nonHeapMax = nonHeapMatch ? parseInt(nonHeapMatch[2].replace(/,/g, '')) * 1024 : 0;
-        
-        return {
-          heapUsed,
-          heapMax,
-          nonHeapUsed,
-          nonHeapMax,
-          percentage: heapMax > 0 ? Math.round((heapUsed / heapMax) * 100) : 0
-        };
-      }
-      
-      throw new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      this.logger.error(`Failed to get memory info for ${instance.url}`, { error });
-      throw error;
-    }
-  }
-  
-  async getThreadInfo(instance: AEMInstance): Promise<ThreadDiagnostics> {
-    try {
-      const response = await this.httpClient.makeRequest(
-        instance,
-        '/system/console/threads',
-        'GET',
-        undefined,
-        15000
-      );
-      
-      if (response.status === 200) {
-        const html = response.data as string;
-        
-        const totalMatch = html.match(/Live threads:\s*(\d+)/);
-        const runnableMatch = html.match(/RUNNABLE.*?(\d+)/);
-        const blockedMatch = html.match(/BLOCKED.*?(\d+)/);
-        const waitingMatch = html.match(/WAITING.*?(\d+)/);
-        const timedWaitingMatch = html.match(/TIMED_WAITING.*?(\d+)/);
-        const deadlockMatch = html.match(/Deadlocked threads:\s*(\d+)/);
-        
-        return {
-          total: totalMatch ? parseInt(totalMatch[1]) : 0,
-          runnable: runnableMatch ? parseInt(runnableMatch[1]) : 0,
-          blocked: blockedMatch ? parseInt(blockedMatch[1]) : 0,
-          waiting: waitingMatch ? parseInt(waitingMatch[1]) : 0,
-          timedWaiting: timedWaitingMatch ? parseInt(timedWaitingMatch[1]) : 0,
-          deadlocked: deadlockMatch ? parseInt(deadlockMatch[1]) : 0
-        };
-      }
-      
-      throw new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      this.logger.error(`Failed to get thread info for ${instance.url}`, { error });
-      throw error;
-    }
-  }
-  
-  async getRepositoryInfo(instance: AEMInstance): Promise<RepositoryDiagnostics> {
-    try {
-      const indexResponse = await Promise.allSettled([
-        this.httpClient.makeRequest(instance, '/oak:index', 'GET', undefined, 15000)
-      ]);
-      
-      let indexHealth = 'unknown';
-      if (indexResponse[0].status === 'fulfilled' && indexResponse[0].value.status === 200) {
-        indexHealth = 'healthy';
-      } else {
-        indexHealth = 'degraded';
-      }
-      
+
       return {
-        size: 0,
-        nodeCount: 0,
-        indexHealth,
-        revisions: 0
+        memory: this.#extractResultOrDefault(results[0], this.#getDefaultMemoryDiagnostics()),
+        threads: this.#extractResultOrDefault(results[1], this.#getDefaultThreadDiagnostics()),
+        repository: this.#extractResultOrDefault(results[2], this.#getDefaultRepositoryDiagnostics()),
+        requests: this.#extractResultOrDefault(results[3], this.#getDefaultRequestDiagnostics()),
+        bundles: this.#extractResultOrDefault(results[4], this.#getDefaultBundleDiagnostics())
       };
-    } catch (error) {
-      this.logger.error(`Failed to get repository info for ${instance.url}`, { error });
-      throw error;
+    } else {
+      const [memoryResult, threadResult, repositoryResult, requestResult, bundleResult] = await Promise.all([
+        collectors[0](instance).catch(() => createFailureResult(new Error('Memory collection failed'))),
+        collectors[1](instance).catch(() => createFailureResult(new Error('Thread collection failed'))),
+        collectors[2](instance).catch(() => createFailureResult(new Error('Repository collection failed'))),
+        collectors[3](instance).catch(() => createFailureResult(new Error('Request collection failed'))),
+        collectors[4](instance).catch(() => createFailureResult(new Error('Bundle collection failed')))
+      ]);
+
+      return {
+        memory: memoryResult.success ? memoryResult.data as MemoryDiagnostics : this.#getDefaultMemoryDiagnostics(),
+        threads: threadResult.success ? threadResult.data as ThreadDiagnostics : this.#getDefaultThreadDiagnostics(),
+        repository: repositoryResult.success ? repositoryResult.data as RepositoryDiagnostics : this.#getDefaultRepositoryDiagnostics(),
+        requests: requestResult.success ? requestResult.data as RequestDiagnostics : this.#getDefaultRequestDiagnostics(),
+        bundles: bundleResult.success ? bundleResult.data as BundleDiagnostics : this.#getDefaultBundleDiagnostics()
+      };
     }
   }
-  
-  async getRequestInfo(instance: AEMInstance): Promise<RequestDiagnostics> {
-    try {
-      const response = await this.httpClient.makeRequest(
-        instance,
-        '/system/console/requests',
-        'GET',
-        undefined,
-        15000
-      );
-      
-      if (response.status === 200) {
-        const html = response.data as string;
+
+  #extractResultOrDefault<T>(
+    result: PromiseSettledResult<OperationResult<unknown>>, 
+    defaultValue: T
+  ): T {
+    if (result.status === 'fulfilled' && result.value.success) {
+      return result.value.data as T;
+    }
+    return defaultValue;
+  }
+
+  #createMemoryCollector(): DiagnosticsCollector<MemoryDiagnostics> {
+    return async (instance: AEMInstance): Promise<OperationResult<MemoryDiagnostics>> => {
+      try {
+        const response = await this.#httpClient.makeRequest(
+          instance,
+          '/system/console/memoryusage',
+          'GET',
+          undefined,
+          this.#config.timeout
+        );
         
-        const avgResponseMatch = html.match(/Average.*?(\d+(?:\.\d+)?)\s*ms/);
-        const activeMatch = html.match(/Active Requests.*?(\d+)/);
-        const queuedMatch = html.match(/Queued Requests.*?(\d+)/);
-        const errorRateMatch = html.match(/Error Rate.*?(\d+(?:\.\d+)?)%/);
+        if (response.status === 200) {
+          const html = response.data as string;
+          
+          const heapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemory) * 1024);
+          const heapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemoryMax) * 1024);
+          const nonHeapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemory) * 1024);
+          const nonHeapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemoryMax) * 1024);
+          
+          const percentage = heapMax > 0 
+            ? createPercentage((heapUsed / heapMax) * 100)
+            : createPercentage(0);
+
+          return createSuccessResult({
+            heapUsed,
+            heapMax,
+            nonHeapUsed,
+            nonHeapMax,
+            percentage
+          });
+        }
         
-        return {
-          averageResponseTime: avgResponseMatch ? parseFloat(avgResponseMatch[1]) : 0,
-          requestsPerSecond: 0,
-          activeRequests: activeMatch ? parseInt(activeMatch[1]) : 0,
-          queuedRequests: queuedMatch ? parseInt(queuedMatch[1]) : 0,
-          errorRate: errorRateMatch ? parseFloat(errorRateMatch[1]) : 0
-        };
+        throw new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        this.#logger.error(`Failed to get memory info for ${instance.url}`, { error });
+        return createFailureResult(error instanceof Error ? error : new Error(String(error)));
       }
-      
-      throw new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      this.logger.error(`Failed to get request info for ${instance.url}`, { error });
-      throw error;
-    }
-  }
-  
-  async getBundleInfo(instance: AEMInstance): Promise<BundleDiagnostics> {
-    try {
-      const response = await this.httpClient.makeRequest(
-        instance,
-        '/system/console/bundles.json',
-        'GET',
-        undefined,
-        15000
-      );
-      
-      if (response.status === 200) {
-        const bundleData = response.data;
-        const bundles = bundleData.data || [];
-        
-        const active = bundles.filter((b: any) => b.state === 'Active').length;
-        const resolved = bundles.filter((b: any) => b.state === 'Resolved').length;
-        const installed = bundles.filter((b: any) => b.state === 'Installed').length;
-        const failed = bundles
-          .filter((b: any) => b.state === 'Installed' || b.state === 'Resolved')
-          .map((b: any) => b.symbolicName);
-        
-        return {
-          total: bundles.length,
-          active,
-          resolved,
-          installed,
-          failed
-        };
-      }
-      
-      throw new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      this.logger.error(`Failed to get bundle info for ${instance.url}`, { error });
-      throw error;
-    }
-  }
-  
-  private getDefaultMemoryDiagnostics(): MemoryDiagnostics {
-    return {
-      heapUsed: 0,
-      heapMax: 0,
-      nonHeapUsed: 0,
-      nonHeapMax: 0,
-      percentage: 0
     };
   }
   
-  private getDefaultThreadDiagnostics(): ThreadDiagnostics {
-    return {
-      total: 0,
-      runnable: 0,
-      blocked: 0,
-      waiting: 0,
-      timedWaiting: 0,
-      deadlocked: 0
+  #createThreadCollector(): DiagnosticsCollector<ThreadDiagnostics> {
+    return async (instance: AEMInstance): Promise<OperationResult<ThreadDiagnostics>> => {
+      try {
+        const response = await this.#httpClient.makeRequest(
+          instance,
+          '/system/console/threads',
+          'GET',
+          undefined,
+          this.#config.timeout
+        );
+        
+        if (response.status === 200) {
+          const html = response.data as string;
+          
+          return createSuccessResult({
+            total: createThreadCount(extractFromHTML(html, HTML_PATTERNS.liveThreads)),
+            runnable: createThreadCount(extractFromHTML(html, HTML_PATTERNS.runnableThreads)),
+            blocked: createThreadCount(extractFromHTML(html, HTML_PATTERNS.blockedThreads)),
+            waiting: createThreadCount(extractFromHTML(html, HTML_PATTERNS.waitingThreads)),
+            timedWaiting: createThreadCount(extractFromHTML(html, HTML_PATTERNS.timedWaitingThreads)),
+            deadlocked: createThreadCount(extractFromHTML(html, HTML_PATTERNS.deadlockedThreads))
+          });
+        }
+        
+        throw new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        this.#logger.error(`Failed to get thread info for ${instance.url}`, { error });
+        return createFailureResult(error instanceof Error ? error : new Error(String(error)));
+      }
     };
   }
   
-  private getDefaultRepositoryDiagnostics(): RepositoryDiagnostics {
+  #createRepositoryCollector(): DiagnosticsCollector<RepositoryDiagnostics> {
+    return async (instance: AEMInstance): Promise<OperationResult<RepositoryDiagnostics>> => {
+      try {
+        const indexResponse = await Promise.allSettled([
+          this.#httpClient.makeRequest(instance, '/oak:index', 'GET', undefined, this.#config.timeout)
+        ]);
+        
+        let indexHealth: RepositoryHealthType = REPOSITORY_HEALTH.UNKNOWN;
+        
+        if (indexResponse[0].status === 'fulfilled' && indexResponse[0].value.status === 200) {
+          indexHealth = REPOSITORY_HEALTH.HEALTHY;
+        } else {
+          indexHealth = REPOSITORY_HEALTH.DEGRADED;
+        }
+        
+        return createSuccessResult({
+          size: createByteSize(0),
+          nodeCount: 0,
+          indexHealth,
+          revisions: 0
+        });
+      } catch (error) {
+        this.#logger.error(`Failed to get repository info for ${instance.url}`, { error });
+        return createFailureResult(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+  }
+  
+  #createRequestCollector(): DiagnosticsCollector<RequestDiagnostics> {
+    return async (instance: AEMInstance): Promise<OperationResult<RequestDiagnostics>> => {
+      try {
+        const response = await this.#httpClient.makeRequest(
+          instance,
+          '/system/console/requests',
+          'GET',
+          undefined,
+          this.#config.timeout
+        );
+        
+        if (response.status === 200) {
+          const html = response.data as string;
+          
+          return createSuccessResult({
+            averageResponseTime: createMilliseconds(extractFromHTML(html, HTML_PATTERNS.averageResponseTime)),
+            requestsPerSecond: createRequestsPerSecond(0),
+            activeRequests: createRequestCount(extractFromHTML(html, HTML_PATTERNS.activeRequests)),
+            queuedRequests: createRequestCount(extractFromHTML(html, HTML_PATTERNS.queuedRequests)),
+            errorRate: createPercentage(extractFromHTML(html, HTML_PATTERNS.errorRate))
+          });
+        }
+        
+        throw new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        this.#logger.error(`Failed to get request info for ${instance.url}`, { error });
+        return createFailureResult(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+  }
+  
+  #createBundleCollector(): DiagnosticsCollector<BundleDiagnostics> {
+    return async (instance: AEMInstance): Promise<OperationResult<BundleDiagnostics>> => {
+      try {
+        const response = await this.#httpClient.makeRequest(
+          instance,
+          '/system/console/bundles.json',
+          'GET',
+          undefined,
+          this.#config.timeout
+        );
+        
+        if (response.status === 200) {
+          const bundleData = response.data as BundleData;
+          const bundles = bundleData.data ?? [];
+          
+          const active = createBundleCount(
+            bundles.filter((b) => b.state === 'Active').length
+          );
+          const resolved = createBundleCount(
+            bundles.filter((b) => b.state === 'Resolved').length
+          );
+          const installed = createBundleCount(
+            bundles.filter((b) => b.state === 'Installed').length
+          );
+          const failed = bundles
+            .filter((b) => b.state === 'Installed' || b.state === 'Resolved')
+            .map((b) => createBundleName(b.symbolicName));
+          
+          return createSuccessResult({
+            total: createBundleCount(bundles.length),
+            active,
+            resolved,
+            installed,
+            failed
+          });
+        }
+        
+        throw new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        this.#logger.error(`Failed to get bundle info for ${instance.url}`, { error });
+        return createFailureResult(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+  }
+  
+  #getDefaultMemoryDiagnostics(): MemoryDiagnostics {
     return {
-      size: 0,
+      heapUsed: createByteSize(0),
+      heapMax: createByteSize(0),
+      nonHeapUsed: createByteSize(0),
+      nonHeapMax: createByteSize(0),
+      percentage: createPercentage(0)
+    };
+  }
+  
+  #getDefaultThreadDiagnostics(): ThreadDiagnostics {
+    return {
+      total: createThreadCount(0),
+      runnable: createThreadCount(0),
+      blocked: createThreadCount(0),
+      waiting: createThreadCount(0),
+      timedWaiting: createThreadCount(0),
+      deadlocked: createThreadCount(0)
+    };
+  }
+  
+  #getDefaultRepositoryDiagnostics(): RepositoryDiagnostics {
+    return {
+      size: createByteSize(0),
       nodeCount: 0,
-      indexHealth: 'unknown',
+      indexHealth: REPOSITORY_HEALTH.UNKNOWN,
       revisions: 0
     };
   }
   
-  private getDefaultRequestDiagnostics(): RequestDiagnostics {
+  #getDefaultRequestDiagnostics(): RequestDiagnostics {
     return {
-      averageResponseTime: 0,
-      requestsPerSecond: 0,
-      activeRequests: 0,
-      queuedRequests: 0,
-      errorRate: 0
+      averageResponseTime: createMilliseconds(0),
+      requestsPerSecond: createRequestsPerSecond(0),
+      activeRequests: createRequestCount(0),
+      queuedRequests: createRequestCount(0),
+      errorRate: createPercentage(0)
     };
   }
   
-  private getDefaultBundleDiagnostics(): BundleDiagnostics {
+  #getDefaultBundleDiagnostics(): BundleDiagnostics {
     return {
-      total: 0,
-      active: 0,
-      resolved: 0,
-      installed: 0,
+      total: createBundleCount(0),
+      active: createBundleCount(0),
+      resolved: createBundleCount(0),
+      installed: createBundleCount(0),
       failed: []
     };
   }

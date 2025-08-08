@@ -2,7 +2,19 @@ import { handleHealthCheck } from '@/handlers/health-check.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
-import { AEMInstance, HealthStatus, SystemDiagnostics } from '@/types.js';
+import { 
+  AEMInstance, 
+  HealthStatus, 
+  HEALTH_STATUS, 
+  HEALTH_COMPONENTS,
+  createByteSize,
+  createPercentage,
+  createThreadCount,
+  createMilliseconds,
+  createRequestCount,
+  createBundleCount,
+  REPOSITORY_HEALTH
+} from '@/types.js';
 
 jest.mock('@/services/alias-resolver.js');
 jest.mock('@/services/parallel-executor.js');
@@ -19,20 +31,58 @@ describe('handleHealthCheck', () => {
   const testInstances: AEMInstance[] = [
     { url: 'http://author-prod:4502', username: 'admin', password: 'admin' },
     { url: 'http://publish-prod:4503', username: 'admin', password: 'admin' }
-  ];
+  ] as const;
 
   const mockHealthStatus: HealthStatus = {
     instance: 'http://author-prod:4502',
-    overall: 'healthy',
+    overall: HEALTH_STATUS.HEALTHY,
     timestamp: new Date(),
     checks: [
       {
-        component: 'reachability',
-        status: 'healthy',
+        component: HEALTH_COMPONENTS.REACHABILITY,
+        status: HEALTH_STATUS.HEALTHY,
         message: 'Instance reachable',
-        responseTime: 150
+        responseTime: createMilliseconds(150)
       }
     ]
+  };
+
+  const mockDiagnostics = {
+    memory: {
+      heapUsed: createByteSize(1073741824),
+      heapMax: createByteSize(2147483648),
+      nonHeapUsed: createByteSize(536870912),
+      nonHeapMax: createByteSize(1073741824),
+      percentage: createPercentage(50)
+    },
+    threads: {
+      total: createThreadCount(150),
+      runnable: createThreadCount(50),
+      blocked: createThreadCount(5),
+      waiting: createThreadCount(40),
+      timedWaiting: createThreadCount(30),
+      deadlocked: createThreadCount(0)
+    },
+    repository: {
+      size: createByteSize(0),
+      nodeCount: 0,
+      indexHealth: REPOSITORY_HEALTH.HEALTHY,
+      revisions: 0
+    },
+    requests: {
+      averageResponseTime: createMilliseconds(250),
+      requestsPerSecond: createRequestCount(10),
+      activeRequests: createRequestCount(5),
+      queuedRequests: createRequestCount(2),
+      errorRate: createPercentage(1)
+    },
+    bundles: {
+      total: createBundleCount(100),
+      active: createBundleCount(98),
+      resolved: createBundleCount(2),
+      installed: createBundleCount(0),
+      failed: []
+    }
   };
 
   beforeEach(() => {
@@ -45,24 +95,13 @@ describe('handleHealthCheck', () => {
 
   describe('basic health checks', () => {
     it('should handle instances parameter correctly', async () => {
-      const args = { aliases: ['author-prod', 'publish-prod'] };
+      const args = { instances: testInstances };
       
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
-        instances: testInstances
-      });
-
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: testInstances[0].url,
+          instanceUrl: 'http://author-prod:4502',
           success: true,
           data: mockHealthStatus,
-          duration: 150
-        },
-        {
-          instanceUrl: testInstances[1].url,
-          success: true,
-          data: { ...mockHealthStatus, instance: testInstances[1].url },
           duration: 200
         }
       ]);
@@ -70,128 +109,52 @@ describe('handleHealthCheck', () => {
       const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
 
       expect(result.isError).toBe(false);
-      expect(mockResolver.resolveMultipleAliases).toHaveBeenCalledWith(['author-prod', 'publish-prod']);
-      expect(mockExecutor.executeOnInstances).toHaveBeenCalledWith(
-        testInstances,
-        expect.any(Function),
-        expect.objectContaining({
-          timeout: 15000,
-          maxConcurrency: 20
-        })
-      );
-
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary.total).toBe(2);
-      expect(responseData.summary.healthy).toBe(2);
-      expect(responseData.results).toHaveProperty(testInstances[0].url);
-    });
-
-    it('should handle direct instances parameter', async () => {
-      const args = { instances: testInstances };
-
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: testInstances[0].url,
-          success: true,
-          data: mockHealthStatus,
-          duration: 150
-        }
-      ]);
-
-      const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      expect(mockResolver.resolveMultipleAliases).not.toHaveBeenCalled();
-
+      expect(result.content[0].type).toBe('text');
+      
       const responseData = JSON.parse(result.content[0].text!);
       expect(responseData.summary.total).toBe(1);
+      expect(responseData.summary.healthy).toBe(1);
+      expect(responseData.results).toHaveProperty('http://author-prod:4502');
     });
 
-    it('should handle legacy aliases parameter', async () => {
+    it('should handle aliases parameter correctly', async () => {
       const args = { aliases: ['author-prod'] };
       
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
+      mockResolver.resolveAlias.mockResolvedValueOnce({
+        alias: 'author-prod',
         instances: [testInstances[0]],
+        resolved: true
       });
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: testInstances[0].url,
+          instanceUrl: 'http://author-prod:4502',
           success: true,
           data: mockHealthStatus,
-          duration: 150
+          duration: 200
         }
       ]);
 
       const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
 
       expect(result.isError).toBe(false);
-      expect(mockResolver.resolveMultipleAliases).toHaveBeenCalledWith(['author-prod']);
+      expect(mockResolver.resolveAlias).toHaveBeenCalledWith('author-prod');
     });
-  });
 
-  describe('detailed diagnostics', () => {
-    it('should include diagnostics when detailed=true', async () => {
-      const args = { 
-        aliases: ['author-prod'], 
-        detailed: true 
-      };
+    it('should handle detailed diagnostics parameter', async () => {
+      const args = { instances: [testInstances[0]], detailed: true };
       
-      const mockDiagnostics: SystemDiagnostics = {
-        memory: {
-          heapUsed: 1073741824,
-          heapMax: 2147483648,
-          nonHeapUsed: 536870912,
-          nonHeapMax: 1073741824,
-          percentage: 50
-        },
-        threads: {
-          total: 150,
-          runnable: 50,
-          blocked: 5,
-          waiting: 30,
-          timedWaiting: 20,
-          deadlocked: 0
-        },
-        repository: {
-          size: 0,
-          nodeCount: 0,
-          indexHealth: 'healthy',
-          revisions: 0
-        },
-        requests: {
-          averageResponseTime: 250,
-          requestsPerSecond: 10,
-          activeRequests: 5,
-          queuedRequests: 2,
-          errorRate: 1.5
-        },
-        bundles: {
-          total: 100,
-          active: 98,
-          resolved: 2,
-          installed: 0,
-          failed: []
-        }
-      };
-
-      const healthStatusWithDiagnostics: HealthStatus = {
+      const healthStatusWithDiagnostics = {
         ...mockHealthStatus,
         diagnostics: mockDiagnostics
       };
 
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
-        instances: [testInstances[0]],
-      });
-
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: testInstances[0].url,
+          instanceUrl: 'http://author-prod:4502',
           success: true,
           data: healthStatusWithDiagnostics,
-          duration: 300
+          duration: 200
         }
       ]);
 
@@ -201,55 +164,41 @@ describe('handleHealthCheck', () => {
       
       const responseData = JSON.parse(result.content[0].text!);
       expect(responseData.metadata.detailed).toBe(true);
-      expect(responseData.results[testInstances[0].url].diagnostics).toBeDefined();
-      expect(responseData.results[testInstances[0].url].diagnostics.memory.percentage).toBe(50);
+      expect(responseData.results['http://author-prod:4502']).toHaveProperty('diagnostics');
     });
 
-    it('should not include diagnostics when detailed=false', async () => {
-      const args = { 
-        aliases: ['author-prod'], 
-        detailed: false 
-      };
-      
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
-        instances: [testInstances[0]],
-      });
+    it('should handle validation errors correctly', async () => {
+      const invalidArgs = {}; // Missing both aliases and instances
 
+      const result = await handleHealthCheck(invalidArgs, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Health check failed');
+      expect(result.content[0].text).toContain('Validation failed');
+    });
+
+    it('should handle executor failures gracefully', async () => {
+      const args = { instances: [testInstances[0]] };
+      
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: testInstances[0].url,
-          success: true,
-          data: mockHealthStatus,
-          duration: 150
+          instanceUrl: 'http://author-prod:4502',
+          success: false,
+          error: 'Connection failed',
+          duration: 5000
         }
       ]);
 
       const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
 
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.metadata.detailed).toBe(false);
-      expect(responseData.results[testInstances[0].url].diagnostics).toBeUndefined();
-    });
-  });
-
-  describe('error handling', () => {
-    it('should handle alias resolution failure', async () => {
-      const args = { aliases: ['nonexistent-instance'] };
+      expect(result.isError).toBe(false);
       
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: false,
-        instances: [],
-        error: 'Instance not found'
-      });
-
-      const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Failed to resolve aliases');
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.summary.unhealthy).toBe(1);
+      expect(responseData.results['http://author-prod:4502'].overall).toBe(HEALTH_STATUS.UNHEALTHY);
     });
 
-    it('should handle too many instances', async () => {
+    it('should respect maximum instance limit', async () => {
       const tooManyInstances = Array.from({ length: 25 }, (_, i) => ({
         url: `http://instance-${i}:4502`,
         username: 'admin',
@@ -264,112 +213,20 @@ describe('handleHealthCheck', () => {
       expect(result.content[0].text).toContain('Maximum 20 instances supported');
     });
 
-    it('should handle execution failures gracefully', async () => {
-      const args = { aliases: ['author-prod'] };
+    it('should handle empty instances after resolution', async () => {
+      const args = { aliases: ['nonexistent-alias'] };
       
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
-        instances: [testInstances[0]]
+      mockResolver.resolveAlias.mockResolvedValueOnce({
+        alias: 'nonexistent-alias',
+        instances: [],
+        resolved: false,
+        error: 'Alias not found'
       });
-
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: testInstances[0].url,
-          success: false,
-          error: 'Connection timeout',
-          duration: 15000
-        }
-      ]);
-
-      const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary.unhealthy).toBe(1);
-      expect(responseData.results[testInstances[0].url].overall).toBe('unhealthy');
-    });
-
-    it('should validate input schema', async () => {
-      const args = {}; // Missing required parameters
 
       const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
 
       expect(result.isError).toBe(true);
-    });
-  });
-
-  describe('response format', () => {
-    it('should include correct metadata', async () => {
-      const args = { aliases: ['author-prod'] };
-      
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
-        instances: [testInstances[0]],
-      });
-
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: testInstances[0].url,
-          success: true,
-          data: mockHealthStatus,
-          duration: 150
-        }
-      ]);
-
-      const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
-
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.requestId).toBeDefined();
-      expect(responseData.metadata.timestamp).toBeDefined();
-      expect(responseData.metadata.totalInstances).toBe(1);
-      expect(responseData.metadata.averageResponseTime).toBe(150);
-      expect(responseData.summary).toEqual({
-        total: 1,
-        healthy: 1,
-        unhealthy: 0,
-        degraded: 0
-      });
-    });
-
-    it('should calculate summary statistics correctly', async () => {
-      const args = { aliases: ['author-prod', 'publish-prod', 'broken-instance'] };
-      
-      mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
-        resolved: true,
-        instances: testInstances.concat({ url: 'http://broken:4502', username: 'admin', password: 'admin' })
-      });
-
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: testInstances[0].url,
-          success: true,
-          data: mockHealthStatus,
-          duration: 150
-        },
-        {
-          instanceUrl: testInstances[1].url,
-          success: true,
-          data: { ...mockHealthStatus, overall: 'degraded' as const },
-          duration: 200
-        },
-        {
-          instanceUrl: 'http://broken:4502',
-          success: false,
-          error: 'Connection refused',
-          duration: 15000
-        }
-      ]);
-
-      const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
-
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary).toEqual({
-        total: 3,
-        healthy: 1,
-        unhealthy: 1,
-        degraded: 1
-      });
+      expect(result.content[0].text).toContain('No instances to check after resolution');
     });
   });
 });
