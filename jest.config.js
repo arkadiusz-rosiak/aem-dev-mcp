@@ -6,12 +6,17 @@ export default {
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
   transform: {
     '^.+\\.ts$': ['ts-jest', {
-      useESM: true
+      useESM: true,
+      tsconfig: {
+        moduleResolution: 'node',
+        allowSyntheticDefaultImports: true,
+        esModuleInterop: true
+      }
     }]
   },
   moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@/(.*)\\.js$': '<rootDir>/src/$1.ts',
-    '^@/types/index\\.js$': '<rootDir>/src/types/index.ts',
     '^@/(.*)$': '<rootDir>/src/$1'
   },
   collectCoverageFrom: [

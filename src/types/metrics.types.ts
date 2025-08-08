@@ -2,7 +2,6 @@ export interface SystemMetrics {
   readonly memory: MemoryMetrics;
   readonly threads: ThreadMetrics;
   readonly repository: RepositoryMetrics;
-  readonly requests: RequestMetrics;
   readonly bundles: BundleMetrics;
 }
 
@@ -37,9 +36,9 @@ export type RepositoryHealthType = typeof REPOSITORY_HEALTH[keyof typeof REPOSIT
 
 export interface RepositoryMetrics {
   readonly size: ByteSize;
-  readonly nodeCount: number;
-  readonly indexHealth: RepositoryHealthType;
-  readonly revisions: number;
+  readonly nodes: number;
+  readonly errors: number;
+  readonly properties: number;
 }
 
 export type Milliseconds = number & { readonly __brand: 'Milliseconds' };
@@ -62,5 +61,5 @@ export interface BundleMetrics {
   readonly active: BundleCount;
   readonly resolved: BundleCount;
   readonly installed: BundleCount;
-  readonly failed: readonly BundleName[];
+  readonly fragments: BundleCount;
 }

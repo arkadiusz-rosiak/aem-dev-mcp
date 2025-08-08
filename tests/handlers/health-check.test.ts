@@ -6,16 +6,13 @@ import {
   AEMInstance, 
   HealthStatus, 
   HEALTH_STATUS, 
-  HEALTH_COMPONENTS,
-  REPOSITORY_HEALTH
+  HEALTH_COMPONENTS
 } from '@/types/index.js';
 import {
   createByteSize,
   createPercentage,
   createThreadCount,
   createMilliseconds,
-  createRequestCount,
-  createRequestsPerSecond,
   createBundleCount
 } from '@/utils/type-factories.js';
 
@@ -52,24 +49,17 @@ describe('handleHealthCheck', () => {
       deadlocked: createThreadCount(0)
     },
     repository: {
-      size: createByteSize(0),
-      nodeCount: 0,
-      indexHealth: REPOSITORY_HEALTH.HEALTHY,
-      revisions: 0
-    },
-    requests: {
-      averageResponseTime: createMilliseconds(250),
-      requestsPerSecond: createRequestsPerSecond(10),
-      activeRequests: createRequestCount(5),
-      queuedRequests: createRequestCount(2),
-      errorRate: createPercentage(1)
+      size: createByteSize(1073741824),
+      nodes: 50000,
+      errors: 0,
+      properties: 150000
     },
     bundles: {
       total: createBundleCount(100),
-      active: createBundleCount(98),
+      active: createBundleCount(95),
       resolved: createBundleCount(2),
-      installed: createBundleCount(0),
-      failed: []
+      installed: createBundleCount(1),
+      fragments: createBundleCount(2)
     }
   };
 
@@ -166,7 +156,6 @@ describe('handleHealthCheck', () => {
       expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('memory');
       expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('threads');
       expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('repository');
-      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('requests');
       expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('bundles');
     });
 

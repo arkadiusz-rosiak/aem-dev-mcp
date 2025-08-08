@@ -8,8 +8,7 @@ import {
   ConcurrencyLimit,
   isNonEmptyArray,
   isAEMInstance,
-  NonEmptyArray,
-  REPOSITORY_HEALTH
+  NonEmptyArray
 } from '@/types/index.js';
 import {
   createConcurrencyLimit,
@@ -17,9 +16,6 @@ import {
   createByteSize,
   createPercentage,
   createThreadCount,
-  createMilliseconds,
-  createRequestCount,
-  createRequestsPerSecond,
   createBundleCount
 } from '@/utils/type-factories.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
@@ -135,23 +131,16 @@ const createUnhealthyStatus = (instanceUrl: string, error: string): HealthStatus
     },
     repository: {
       size: createByteSize(0),
-      nodeCount: 0,
-      indexHealth: REPOSITORY_HEALTH.UNHEALTHY,
-      revisions: 0
-    },
-    requests: {
-      averageResponseTime: createMilliseconds(0),
-      requestsPerSecond: createRequestsPerSecond(0),
-      activeRequests: createRequestCount(0),
-      queuedRequests: createRequestCount(0),
-      errorRate: createPercentage(0)
+      nodes: 0,
+      errors: 0,
+      properties: 0
     },
     bundles: {
       total: createBundleCount(0),
       active: createBundleCount(0),
       resolved: createBundleCount(0),
       installed: createBundleCount(0),
-      failed: []
+      fragments: createBundleCount(0)
     }
   }
 });

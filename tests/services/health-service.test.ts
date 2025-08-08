@@ -42,15 +42,23 @@ describe('HealthService', () => {
     it('should return healthy status when all checks pass quickly', async () => {
       let callCount = 0;
       const mockResponses = [
+        // Reachability check
         { status: 200, data: {} },
+        // Bundle check 
         { status: 200, data: { s: [100, 100], data: [] } },
+        // Login check
         { status: 200, data: '' },
+        // Repository check
         { status: 200, data: '' },
+        // Console check
         { status: 200, data: '' },
-        { status: 200, data: '<html>heap memory: 1024</html>' },
-        { status: 200, data: '<html>Live threads: 100</html>' },
-        { status: 200, data: {} },
-        { status: 200, data: '<html>activeRequests: 5</html>' },
+        // Memory metrics
+        { status: 200, data: "var __overall__ = {'Overall Heap Memory Usage':'init = 268435456(262144K) used = 1073741824(1048576K) committed = 2147483648(2097152K) max = 4294967296(4194304K)','Overall Non-Heap Memory Usage':'init = 7667712(7488K) used = 134217728(131072K) committed = 268435456(262144K) max = -1(-1K)',};" },
+        // Thread metrics
+        { status: 200, data: '<pre>Status:&nbsp;150&nbsp;threads&nbsp;(150&nbsp;alive/50&nbsp;daemon/0&nbsp;interrupted)&nbsp;in&nbsp;5&nbsp;groups&nbsp;(0&nbsp;destroyed).</pre>' },
+        // Repository metrics  
+        { status: 200, data: '<div class="results"><p>Traversed 100000 nodes, 500000 properties in 1000 ms</p><p>1073741824 bytes</p><p>Traversed 100000 nodes, 0 errors found</p></div>' },
+        // Bundle metrics
         { status: 200, data: { s: [100, 100], data: [] } }
       ];
 
@@ -75,7 +83,6 @@ describe('HealthService', () => {
       expect(result.metrics.memory).toBeDefined();
       expect(result.metrics.threads).toBeDefined();
       expect(result.metrics.repository).toBeDefined();
-      expect(result.metrics.requests).toBeDefined();
       expect(result.metrics.bundles).toBeDefined();
     });
 
@@ -132,7 +139,8 @@ describe('HealthService', () => {
           data: [
             { state: 'Active', symbolicName: 'bundle1' },
             { state: 'Installed', symbolicName: 'failed-bundle' },
-            { state: 'Resolved', symbolicName: 'another-failed-bundle' }
+            { state: 'Resolved', symbolicName: 'another-failed-bundle' },
+            { state: 'Fragment', symbolicName: 'fragment-bundle' }
           ]
         }
       };
@@ -145,11 +153,13 @@ describe('HealthService', () => {
 
       expect(result.overall).toBe(HEALTH_STATUS.UNHEALTHY);
       expect(result.checks[1].status).toBe(HEALTH_STATUS.UNHEALTHY);
-      expect(result.checks[1].message).toBe('2 bundles failed');
+      expect(result.checks[1].message).toBe('2 bundles not active (1 resolved, 1 installed)');
       expect(result.checks[1].details).toEqual({
         total: 100,
         active: 90,
-        failed: ['failed-bundle', 'another-failed-bundle']
+        resolved: ['another-failed-bundle'],
+        installed: ['failed-bundle'],
+        fragments: 1
       });
     });
 

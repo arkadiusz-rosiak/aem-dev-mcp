@@ -16,43 +16,38 @@ export const parseCommaSeparatedNumber = (value: string): number =>
 
 export const HTML_PATTERNS = {
   heapMemory: createHTMLMatcher(
-    /Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
-    (match) => parseCommaSeparatedNumber(match[1])
+    /'Overall Heap Memory Usage':'.*?used = (\d+)/,
+    (match) => parseInt(match[1], 10)
   ),
   heapMemoryMax: createHTMLMatcher(
-    /Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
-    (match) => parseCommaSeparatedNumber(match[2])
+    /'Overall Heap Memory Usage':'.*?max = (\d+)/,
+    (match) => parseInt(match[1], 10)
   ),
   nonHeapMemory: createHTMLMatcher(
-    /Non-Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
-    (match) => parseCommaSeparatedNumber(match[1])
+    /'Overall Non-Heap Memory Usage':'.*?used = (\d+)/,
+    (match) => parseInt(match[1], 10)
   ),
   nonHeapMemoryMax: createHTMLMatcher(
-    /Non-Heap Memory Usage.*?(\d+(?:,\d+)*)\s*of\s*(\d+(?:,\d+)*)/s,
-    (match) => parseCommaSeparatedNumber(match[2])
+    /'Overall Non-Heap Memory Usage':'.*?max = (-?\d+)/,
+    (match) => {
+      const value = parseInt(match[1], 10);
+      return value < 0 ? 0 : value;
+    }
   ),
   liveThreads: createHTMLMatcher(
-    /Live threads:\s*(\d+)/,
+    /Status:[\s&nbsp;]*(\d+)[\s&nbsp;]*threads/,
     (match) => parseInt(match[1], 10)
   ),
-  runnableThreads: createHTMLMatcher(
-    /RUNNABLE.*?(\d+)/,
+  aliveThreads: createHTMLMatcher(
+    /(\d+)[\s&nbsp;]*alive/,
     (match) => parseInt(match[1], 10)
   ),
-  blockedThreads: createHTMLMatcher(
-    /BLOCKED.*?(\d+)/,
+  daemonThreads: createHTMLMatcher(
+    /(\d+)[\s&nbsp;]*daemon/,
     (match) => parseInt(match[1], 10)
   ),
-  waitingThreads: createHTMLMatcher(
-    /WAITING.*?(\d+)/,
-    (match) => parseInt(match[1], 10)
-  ),
-  timedWaitingThreads: createHTMLMatcher(
-    /TIMED_WAITING.*?(\d+)/,
-    (match) => parseInt(match[1], 10)
-  ),
-  deadlockedThreads: createHTMLMatcher(
-    /Deadlocked threads:\s*(\d+)/,
+  interruptedThreads: createHTMLMatcher(
+    /(\d+)[\s&nbsp;]*interrupted/,
     (match) => parseInt(match[1], 10)
   ),
   averageResponseTime: createHTMLMatcher(

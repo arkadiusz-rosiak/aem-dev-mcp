@@ -14,19 +14,14 @@ import {
   MemoryMetrics,
   ThreadMetrics,
   RepositoryMetrics,
-  RequestMetrics,
-  BundleMetrics,
-  REPOSITORY_HEALTH
+  BundleMetrics
 } from '@/types/index.js';
 import {
   createMilliseconds,
   createByteSize,
   createPercentage,
   createThreadCount,
-  createRequestCount,
-  createRequestsPerSecond,
-  createBundleCount,
-  createBundleName
+  createBundleCount
 } from '@/utils/type-factories.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { BundleData } from '@/schemas/bundle-data.schema.js';
@@ -156,20 +151,30 @@ export class HealthService {
           const bundleData = response.data as BundleData;
           const totalBundles = bundleData.s?.[1] ?? 0;
           const activeBundles = bundleData.s?.[0] ?? 0;
-          const failedBundles = bundleData.data?.filter((bundle) => 
-            bundle.state === 'Installed' || bundle.state === 'Resolved'
+          const resolvedBundles = bundleData.data?.filter((bundle) => 
+            bundle.state === 'Resolved'
+          ) ?? [];
+          const installedBundles = bundleData.data?.filter((bundle) => 
+            bundle.state === 'Installed'
+          ) ?? [];
+          const fragmentBundles = bundleData.data?.filter((bundle) => 
+            bundle.state === 'Fragment'
           ) ?? [];
           
-          if (failedBundles.length > 0) {
+          const problemBundles = resolvedBundles.length + installedBundles.length;
+          
+          if (problemBundles > 0) {
             return createSuccessResult({
               component: HEALTH_COMPONENTS.BUNDLES,
               status: HEALTH_STATUS.UNHEALTHY,
-              message: `${failedBundles.length} bundles failed`,
+              message: `${problemBundles} bundles not active (${resolvedBundles.length} resolved, ${installedBundles.length} installed)`,
               responseTime,
               details: {
                 total: totalBundles,
                 active: activeBundles,
-                failed: failedBundles.map((b) => b.symbolicName)
+                resolved: resolvedBundles.map((b) => b.symbolicName),
+                installed: installedBundles.map((b) => b.symbolicName),
+                fragments: fragmentBundles.length
               } as const
             }, responseTime);
           }
@@ -181,7 +186,10 @@ export class HealthService {
             responseTime,
             details: {
               total: totalBundles,
-              active: activeBundles
+              active: activeBundles,
+              resolved: [],
+              installed: [],
+              fragments: fragmentBundles.length
             } as const
           }, responseTime);
         } else if (isAuthError(response.status)) {
@@ -356,11 +364,10 @@ export class HealthService {
   }
   
   async #collectSystemMetrics(instance: AEMInstance): Promise<SystemMetrics> {
-    const [memory, threads, repository, requests, bundles] = await Promise.allSettled([
+    const [memory, threads, repository, bundles] = await Promise.allSettled([
       this.#collectMemoryMetrics(instance),
       this.#collectThreadMetrics(instance),
       this.#collectRepositoryMetrics(instance),
-      this.#collectRequestMetrics(instance),
       this.#collectBundleMetrics(instance)
     ]);
 
@@ -368,7 +375,6 @@ export class HealthService {
       memory: memory.status === 'fulfilled' ? memory.value : this.#getDefaultMemoryMetrics(),
       threads: threads.status === 'fulfilled' ? threads.value : this.#getDefaultThreadMetrics(),
       repository: repository.status === 'fulfilled' ? repository.value : this.#getDefaultRepositoryMetrics(),
-      requests: requests.status === 'fulfilled' ? requests.value : this.#getDefaultRequestMetrics(),
       bundles: bundles.status === 'fulfilled' ? bundles.value : this.#getDefaultBundleMetrics()
     };
   }
@@ -386,10 +392,10 @@ export class HealthService {
       if (isOk(response.status)) {
         const html = response.data as string;
         
-        const heapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemory) * 1024);
-        const heapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemoryMax) * 1024);
-        const nonHeapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemory) * 1024);
-        const nonHeapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemoryMax) * 1024);
+        const heapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemory));
+        const heapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.heapMemoryMax));
+        const nonHeapUsed = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemory));
+        const nonHeapMax = createByteSize(extractFromHTML(html, HTML_PATTERNS.nonHeapMemoryMax));
         
         const percentage = heapMax > 0 
           ? createPercentage((heapUsed / heapMax) * 100)
@@ -405,7 +411,7 @@ export class HealthService {
       }
       
       return this.#getDefaultMemoryMetrics();
-    } catch (error) {
+    } catch (_error) {
       return this.#getDefaultMemoryMetrics();
     }
   }
@@ -414,7 +420,7 @@ export class HealthService {
     try {
       const response = await this.#httpClient.makeRequest(
         instance,
-        '/system/console/threads',
+        '/system/console/status-Threads',
         'GET',
         undefined,
         this.#config.timeout
@@ -423,18 +429,22 @@ export class HealthService {
       if (isOk(response.status)) {
         const html = response.data as string;
         
+        const totalThreads = extractFromHTML(html, HTML_PATTERNS.liveThreads);
+        const aliveThreads = extractFromHTML(html, HTML_PATTERNS.aliveThreads);
+        const interruptedThreads = extractFromHTML(html, HTML_PATTERNS.interruptedThreads);
+        
         return {
-          total: createThreadCount(extractFromHTML(html, HTML_PATTERNS.liveThreads)),
-          runnable: createThreadCount(extractFromHTML(html, HTML_PATTERNS.runnableThreads)),
-          blocked: createThreadCount(extractFromHTML(html, HTML_PATTERNS.blockedThreads)),
-          waiting: createThreadCount(extractFromHTML(html, HTML_PATTERNS.waitingThreads)),
-          timedWaiting: createThreadCount(extractFromHTML(html, HTML_PATTERNS.timedWaitingThreads)),
-          deadlocked: createThreadCount(extractFromHTML(html, HTML_PATTERNS.deadlockedThreads))
+          total: createThreadCount(totalThreads),
+          runnable: createThreadCount(aliveThreads),
+          blocked: createThreadCount(0),
+          waiting: createThreadCount(0),
+          timedWaiting: createThreadCount(0),
+          deadlocked: createThreadCount(interruptedThreads)
         };
       }
       
       return this.#getDefaultThreadMetrics();
-    } catch (error) {
+    } catch (_error) {
       return this.#getDefaultThreadMetrics();
     }
   }
@@ -443,54 +453,40 @@ export class HealthService {
     try {
       const response = await this.#httpClient.makeRequest(
         instance,
-        '/oak:index',
-        'GET',
-        undefined,
-        this.#config.timeout
-      );
-      
-      const indexHealth = isOk(response.status) 
-        ? REPOSITORY_HEALTH.HEALTHY 
-        : REPOSITORY_HEALTH.UNHEALTHY;
-      
-      return {
-        size: createByteSize(0),
-        nodeCount: 0,
-        indexHealth,
-        revisions: 0
-      };
-    } catch (error) {
-      return this.#getDefaultRepositoryMetrics();
-    }
-  }
-
-  async #collectRequestMetrics(instance: AEMInstance): Promise<RequestMetrics> {
-    try {
-      const response = await this.#httpClient.makeRequest(
-        instance,
-        '/system/console/requests',
-        'GET',
-        undefined,
+        '/system/console/repositorycheck',
+        'POST',
+        'workspace=crx.default&path=%2F&traversal=on&datastoreconsistency=on',
         this.#config.timeout
       );
       
       if (isOk(response.status)) {
         const html = response.data as string;
         
+        // Extract metrics from repository check response
+        const sizeMatch = html.match(/(\d+(?:,\d+)*)\s+bytes/);
+        const nodeCountMatch = html.match(/Traversed\s+(\d+(?:,\d+)*)\s+nodes/);
+        const propertiesMatch = html.match(/(\d+(?:,\d+)*)\s+properties/);
+        const errorsMatch = html.match(/(\d+)\s+errors found/);
+        
+        const size = sizeMatch ? parseInt(sizeMatch[1].replace(/,/g, ''), 10) : 0;
+        const nodes = nodeCountMatch ? parseInt(nodeCountMatch[1].replace(/,/g, ''), 10) : 0;
+        const properties = propertiesMatch ? parseInt(propertiesMatch[1].replace(/,/g, ''), 10) : 0;
+        const errors = errorsMatch ? parseInt(errorsMatch[1], 10) : 0;
+        
         return {
-          averageResponseTime: createMilliseconds(extractFromHTML(html, HTML_PATTERNS.averageResponseTime)),
-          requestsPerSecond: createRequestsPerSecond(0),
-          activeRequests: createRequestCount(extractFromHTML(html, HTML_PATTERNS.activeRequests)),
-          queuedRequests: createRequestCount(extractFromHTML(html, HTML_PATTERNS.queuedRequests)),
-          errorRate: createPercentage(extractFromHTML(html, HTML_PATTERNS.errorRate))
+          size: createByteSize(size),
+          nodes,
+          errors,
+          properties
         };
       }
       
-      return this.#getDefaultRequestMetrics();
-    } catch (error) {
-      return this.#getDefaultRequestMetrics();
+      return this.#getDefaultRepositoryMetrics();
+    } catch (_error) {
+      return this.#getDefaultRepositoryMetrics();
     }
   }
+
 
   async #collectBundleMetrics(instance: AEMInstance): Promise<BundleMetrics> {
     try {
@@ -515,21 +511,20 @@ export class HealthService {
         const installed = createBundleCount(
           bundles.filter((b) => b.state === 'Installed').length
         );
-        const failed = bundles
-          .filter((b) => b.state === 'Installed' || b.state === 'Resolved')
-          .map((b) => createBundleName(b.symbolicName));
-        
+        const fragments = createBundleCount(
+          bundles.filter((b) => b.state === 'Fragment').length
+        );
         return {
           total: createBundleCount(bundles.length),
           active,
           resolved,
           installed,
-          failed
+          fragments
         };
       }
       
       return this.#getDefaultBundleMetrics();
-    } catch (error) {
+    } catch (_error) {
       return this.#getDefaultBundleMetrics();
     }
   }
@@ -558,21 +553,12 @@ export class HealthService {
   #getDefaultRepositoryMetrics(): RepositoryMetrics {
     return {
       size: createByteSize(0),
-      nodeCount: 0,
-      indexHealth: REPOSITORY_HEALTH.UNHEALTHY,
-      revisions: 0
+      nodes: 0,
+      errors: 0,
+      properties: 0
     };
   }
 
-  #getDefaultRequestMetrics(): RequestMetrics {
-    return {
-      averageResponseTime: createMilliseconds(0),
-      requestsPerSecond: createRequestsPerSecond(0),
-      activeRequests: createRequestCount(0),
-      queuedRequests: createRequestCount(0),
-      errorRate: createPercentage(0)
-    };
-  }
 
   #getDefaultBundleMetrics(): BundleMetrics {
     return {
@@ -580,7 +566,7 @@ export class HealthService {
       active: createBundleCount(0),
       resolved: createBundleCount(0),
       installed: createBundleCount(0),
-      failed: []
+      fragments: createBundleCount(0)
     };
   }
 
