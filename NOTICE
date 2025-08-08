@@ -1,0 +1,17 @@
+NOTICE
+
+This software is an independent open-source project and is not affiliated with, 
+endorsed by, or sponsored by Adobe Inc.
+
+Adobe®, Adobe Experience Manager®, and AEM® are registered trademarks or 
+trademarks of Adobe Inc. in the United States and/or other countries.
+
+The use of these trademarks in this project is solely for the purpose of 
+indicating compatibility with Adobe Experience Manager software and does not 
+imply any affiliation or endorsement by Adobe Inc.
+
+This project provides connectivity tools for Adobe Experience Manager instances 
+through publicly documented APIs. Users must have valid licenses for Adobe 
+Experience Manager to use this tool with AEM instances.
+
+All other trademarks mentioned are the property of their respective owners.
