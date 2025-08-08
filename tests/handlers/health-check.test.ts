@@ -45,7 +45,7 @@ describe('handleHealthCheck', () => {
 
   describe('basic health checks', () => {
     it('should handle instances parameter correctly', async () => {
-      const args = { instances: ['author-prod', 'publish-prod'] };
+      const args = { aliases: ['author-prod', 'publish-prod'] };
       
       mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
         resolved: true,
@@ -87,7 +87,7 @@ describe('handleHealthCheck', () => {
     });
 
     it('should handle direct instances parameter', async () => {
-      const args = { directInstances: testInstances };
+      const args = { instances: testInstances };
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
@@ -134,7 +134,7 @@ describe('handleHealthCheck', () => {
   describe('detailed diagnostics', () => {
     it('should include diagnostics when detailed=true', async () => {
       const args = { 
-        instances: ['author-prod'], 
+        aliases: ['author-prod'], 
         detailed: true 
       };
       
@@ -207,7 +207,7 @@ describe('handleHealthCheck', () => {
 
     it('should not include diagnostics when detailed=false', async () => {
       const args = { 
-        instances: ['author-prod'], 
+        aliases: ['author-prod'], 
         detailed: false 
       };
       
@@ -235,7 +235,7 @@ describe('handleHealthCheck', () => {
 
   describe('error handling', () => {
     it('should handle alias resolution failure', async () => {
-      const args = { instances: ['nonexistent-instance'] };
+      const args = { aliases: ['nonexistent-instance'] };
       
       mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
         resolved: false,
@@ -256,7 +256,7 @@ describe('handleHealthCheck', () => {
         password: 'admin'
       }));
 
-      const args = { directInstances: tooManyInstances };
+      const args = { instances: tooManyInstances };
 
       const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
 
@@ -265,11 +265,11 @@ describe('handleHealthCheck', () => {
     });
 
     it('should handle execution failures gracefully', async () => {
-      const args = { instances: ['author-prod'] };
+      const args = { aliases: ['author-prod'] };
       
       mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
         resolved: true,
-        instances: [testInstances[0]],
+        instances: [testInstances[0]]
       });
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
@@ -301,7 +301,7 @@ describe('handleHealthCheck', () => {
 
   describe('response format', () => {
     it('should include correct metadata', async () => {
-      const args = { instances: ['author-prod'] };
+      const args = { aliases: ['author-prod'] };
       
       mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
         resolved: true,
@@ -333,11 +333,11 @@ describe('handleHealthCheck', () => {
     });
 
     it('should calculate summary statistics correctly', async () => {
-      const args = { instances: ['author-prod', 'publish-prod', 'broken-instance'] };
+      const args = { aliases: ['author-prod', 'publish-prod', 'broken-instance'] };
       
       mockResolver.resolveMultipleAliases.mockResolvedValueOnce({
         resolved: true,
-        instances: testInstances.concat({ url: 'http://broken:4502', username: 'admin', password: 'admin' }),
+        instances: testInstances.concat({ url: 'http://broken:4502', username: 'admin', password: 'admin' })
       });
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([

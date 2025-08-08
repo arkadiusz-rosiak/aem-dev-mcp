@@ -1,4 +1,4 @@
-import { MCPToolResult, AEMInstance, HealthStatus } from '@/types.js';
+import { MCPToolResult, HealthStatus, AEMInstance } from '@/types.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { HealthService } from '@/services/health-service.js';
@@ -10,17 +10,16 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 
 const HealthCheckSchema = z.object({
-  instances: z.array(z.string()).optional(),
-  detailed: z.boolean().optional(),
   aliases: z.array(z.string()).optional(),
-  directInstances: z.array(z.object({
+  instances: z.array(z.object({
     url: z.string().url(),
     username: z.string().min(1),
     password: z.string().min(1),
   })).optional(),
+  detailed: z.boolean().optional()
 }).refine(
-  data => data.instances || data.aliases || data.directInstances,
-  { message: "Either 'instances', 'aliases', or 'directInstances' must be provided" }
+  data => data.aliases || data.instances,
+  { message: "Either 'aliases' or 'instances' must be provided" }
 );
 
 export async function handleHealthCheck(
@@ -38,16 +37,14 @@ export async function handleHealthCheck(
     const diagnosticsService = new DiagnosticsService(client);
     
     let instances: AEMInstance[] = [];
-    
-    if (validatedInput.instances || validatedInput.aliases) {
-      const aliasesToResolve = validatedInput.instances || validatedInput.aliases || [];
-      const resolution = await resolver.resolveMultipleAliases(aliasesToResolve);
+    if (validatedInput.aliases) {
+      const resolution = await resolver.resolveMultipleAliases(validatedInput.aliases);
       if (!resolution.resolved) {
         throw new Error(`Failed to resolve aliases: ${resolution.error}`);
       }
       instances = resolution.instances;
-    } else if (validatedInput.directInstances) {
-      instances = validatedInput.directInstances;
+    } else if (validatedInput.instances) {
+      instances = validatedInput.instances;
     }
     
     if (instances.length > 20) {
@@ -149,22 +146,12 @@ export const healthCheckTool = {
   inputSchema: {
     type: 'object',
     properties: {
-      instances: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Instance aliases from aem-instances.yaml to check'
-      },
-      detailed: {
-        type: 'boolean',
-        description: 'Include detailed diagnostic information (memory, threads, bundles, etc.)',
-        default: false
-      },
       aliases: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Alternative way to specify instance aliases (legacy support)'
+        description: 'Instance aliases from configuration to check'
       },
-      directInstances: {
+      instances: {
         type: 'array',
         items: {
           type: 'object',
@@ -175,13 +162,17 @@ export const healthCheckTool = {
           },
           required: ['url', 'username', 'password']
         },
-        description: 'Direct instance configuration bypassing alias resolution'
+        description: 'Direct instance configuration (overrides aliases)'
+      },
+      detailed: {
+        type: 'boolean',
+        description: 'Include detailed diagnostic information (memory, threads, bundles, etc.)',
+        default: false
       }
     },
     oneOf: [
-      { required: ['instances'] },
       { required: ['aliases'] },
-      { required: ['directInstances'] }
+      { required: ['instances'] }
     ]
   }
 };
