@@ -1,0 +1,506 @@
+import {
+  AEMInstance,
+  OperationResult,
+  OSGiConfiguration,
+  ConfigurationOperationResult,
+  ConfigurationRequest,
+  ConfigProperty,
+  OSGiError,
+  OSGI_ERROR_CODES,
+  ConfigPropertyType,
+  isConfigPropertyType,
+  isConfigProperty,
+  TimeoutMs
+} from '@/types/index.js';
+import { AemHttpClient } from '@/services/http-client.js';
+import { createSuccessResult, createFailureResult } from '@/utils/operation-result.js';
+import { isOk, isAuthError } from '@/utils/http-status.js';
+import { TIMEOUTS } from '@/constants/timeouts.js';
+import { createLogger } from '@/utils/logger.js';
+
+interface ConfigurationManagementConfig {
+  readonly timeout: TimeoutMs;
+}
+
+const DEFAULT_CONFIG: ConfigurationManagementConfig = {
+  timeout: TIMEOUTS.DEFAULT
+} as const;
+
+interface ConfigListResponse {
+  readonly configurations?: readonly any[];
+}
+
+export class ConfigurationManagementService {
+  readonly #httpClient: AemHttpClient;
+  readonly #config: ConfigurationManagementConfig;
+  readonly #logger = createLogger();
+
+  constructor(httpClient: AemHttpClient, config: Partial<ConfigurationManagementConfig> = {}) {
+    this.#httpClient = httpClient;
+    this.#config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  async listConfigurations(instance: AEMInstance, pidFilter?: string): Promise<OperationResult<OSGiConfiguration[]>> {
+    const startTime = Date.now();
+    
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/system/console/configMgr.json',
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+
+      if (!isOk(response.status)) {
+        if (isAuthError(response.status)) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required for configuration console (HTTP ${response.status})`),
+            Date.now() - startTime
+          );
+        }
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration console unavailable (HTTP ${response.status})`),
+          Date.now() - startTime
+        );
+      }
+
+      const configData = response.data as ConfigListResponse;
+      if (!configData.configurations) {
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid configuration data received'),
+          Date.now() - startTime
+        );
+      }
+
+      const configurations = this.#parseConfigurations(configData.configurations);
+      const filteredConfigurations = this.#filterConfigurations(configurations, pidFilter);
+
+      return createSuccessResult(filteredConfigurations, Date.now() - startTime);
+    } catch (error) {
+      return createFailureResult(
+        this.#classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
+  async getConfiguration(instance: AEMInstance, pid: string): Promise<OperationResult<OSGiConfiguration>> {
+    const startTime = Date.now();
+    
+    try {
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        `/system/console/configMgr/${encodeURIComponent(pid)}.json`,
+        'GET',
+        undefined,
+        this.#config.timeout
+      );
+
+      if (!isOk(response.status)) {
+        if (isAuthError(response.status)) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            Date.now() - startTime
+          );
+        }
+        if (response.status === 404) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Configuration ${pid} not found`),
+            Date.now() - startTime
+          );
+        }
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unavailable (HTTP ${response.status})`),
+          Date.now() - startTime
+        );
+      }
+
+      const configData = response.data;
+      const configuration = this.#parseConfiguration(configData);
+      
+      if (!configuration) {
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Failed to parse configuration data'),
+          Date.now() - startTime
+        );
+      }
+
+      return createSuccessResult(configuration, Date.now() - startTime);
+    } catch (error) {
+      return createFailureResult(
+        this.#classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
+  async createConfiguration(instance: AEMInstance, request: Omit<ConfigurationRequest, 'instanceAlias'>): Promise<OperationResult<ConfigurationOperationResult>> {
+    const startTime = Date.now();
+    
+    try {
+      const validationResult = this.#validateConfigurationRequest(request);
+      if (!validationResult.valid) {
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
+          Date.now() - startTime
+        );
+      }
+
+      const formData = this.#buildConfigurationFormData(request);
+
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        '/system/console/configMgr/[Temporary PID replaced by real PID upon save]',
+        'POST',
+        formData,
+        this.#config.timeout,
+        { 'Content-Type': 'application/x-www-form-urlencoded' }
+      );
+
+      if (!isOk(response.status)) {
+        if (isAuthError(response.status)) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            Date.now() - startTime
+          );
+        }
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration creation failed (HTTP ${response.status})`),
+          Date.now() - startTime
+        );
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const createdConfig = await this.getConfiguration(instance, request.pid);
+      if (!createdConfig.success) {
+        return createFailureResult(createdConfig.error, Date.now() - startTime);
+      }
+
+      return createSuccessResult({
+        success: true,
+        configuration: createdConfig.data,
+        message: 'Configuration created successfully'
+      }, Date.now() - startTime);
+
+    } catch (error) {
+      return createFailureResult(
+        this.#classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
+  async updateConfiguration(instance: AEMInstance, request: Omit<ConfigurationRequest, 'instanceAlias'>): Promise<OperationResult<ConfigurationOperationResult>> {
+    const startTime = Date.now();
+    
+    try {
+      const validationResult = this.#validateConfigurationRequest(request);
+      if (!validationResult.valid) {
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
+          Date.now() - startTime
+        );
+      }
+
+      const existingConfig = await this.getConfiguration(instance, request.pid);
+      if (!existingConfig.success) {
+        return createFailureResult(existingConfig.error, Date.now() - startTime);
+      }
+
+      const formData = this.#buildConfigurationFormData(request);
+
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        `/system/console/configMgr/${encodeURIComponent(request.pid)}`,
+        'POST',
+        formData,
+        this.#config.timeout,
+        { 'Content-Type': 'application/x-www-form-urlencoded' }
+      );
+
+      if (!isOk(response.status)) {
+        if (isAuthError(response.status)) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            Date.now() - startTime
+          );
+        }
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration update failed (HTTP ${response.status})`),
+          Date.now() - startTime
+        );
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const updatedConfig = await this.getConfiguration(instance, request.pid);
+      if (!updatedConfig.success) {
+        return createFailureResult(updatedConfig.error, Date.now() - startTime);
+      }
+
+      return createSuccessResult({
+        success: true,
+        configuration: updatedConfig.data,
+        message: 'Configuration updated successfully'
+      }, Date.now() - startTime);
+
+    } catch (error) {
+      return createFailureResult(
+        this.#classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
+  async deleteConfiguration(instance: AEMInstance, pid: string): Promise<OperationResult<ConfigurationOperationResult>> {
+    const startTime = Date.now();
+    
+    try {
+      const existingConfig = await this.getConfiguration(instance, pid);
+      if (!existingConfig.success) {
+        return createFailureResult(existingConfig.error, Date.now() - startTime);
+      }
+
+      const formData = new URLSearchParams();
+      formData.append('delete', 'true');
+
+      const response = await this.#httpClient.makeRequest(
+        instance,
+        `/system/console/configMgr/${encodeURIComponent(pid)}`,
+        'POST',
+        formData.toString(),
+        this.#config.timeout,
+        { 'Content-Type': 'application/x-www-form-urlencoded' }
+      );
+
+      if (!isOk(response.status)) {
+        if (isAuthError(response.status)) {
+          return createFailureResult(
+            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            Date.now() - startTime
+          );
+        }
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration deletion failed (HTTP ${response.status})`),
+          Date.now() - startTime
+        );
+      }
+
+      return createSuccessResult({
+        success: true,
+        message: 'Configuration deleted successfully'
+      }, Date.now() - startTime);
+
+    } catch (error) {
+      return createFailureResult(
+        this.#classifyError(error),
+        Date.now() - startTime
+      );
+    }
+  }
+
+  #parseConfigurations(configData: readonly any[]): OSGiConfiguration[] {
+    const configurations: OSGiConfiguration[] = [];
+
+    for (const item of configData) {
+      try {
+        const configuration = this.#parseConfiguration(item);
+        if (configuration) {
+          configurations.push(configuration);
+        }
+      } catch (error) {
+        this.#logger.warn?.('Failed to parse configuration data', { item, error });
+      }
+    }
+
+    return configurations;
+  }
+
+  #parseConfiguration(item: any): OSGiConfiguration | null {
+    if (!this.#isValidConfigurationData(item)) {
+      return null;
+    }
+
+    const properties: Record<string, ConfigProperty> = {};
+
+    if (item.properties && typeof item.properties === 'object') {
+      for (const [key, propData] of Object.entries(item.properties)) {
+        if (this.#isValidPropertyData(propData)) {
+          properties[key] = {
+            name: key,
+            value: (propData as any).value,
+            type: (propData as any).type || 'String',
+            cardinality: (propData as any).cardinality,
+            description: (propData as any).description
+          };
+        }
+      }
+    }
+
+    return {
+      pid: item.pid,
+      title: item.title,
+      description: item.description,
+      properties,
+      factoryPid: item.factoryPid,
+      bundleLocation: item.bundleLocation
+    };
+  }
+
+  #isValidConfigurationData(item: any): boolean {
+    return (
+      typeof item === 'object' &&
+      item !== null &&
+      typeof item.pid === 'string'
+    );
+  }
+
+  #isValidPropertyData(prop: any): boolean {
+    return (
+      typeof prop === 'object' &&
+      prop !== null &&
+      'value' in prop
+    );
+  }
+
+  #filterConfigurations(configurations: OSGiConfiguration[], pidFilter?: string): OSGiConfiguration[] {
+    if (!pidFilter) {
+      return configurations;
+    }
+
+    const filter = pidFilter.toLowerCase();
+    return configurations.filter(config => 
+      config.pid.toLowerCase().includes(filter) ||
+      (config.title && config.title.toLowerCase().includes(filter))
+    );
+  }
+
+  #validateConfigurationRequest(request: Omit<ConfigurationRequest, 'instanceAlias'>): { valid: boolean; error?: string } {
+    if (!request.pid || typeof request.pid !== 'string') {
+      return { valid: false, error: 'PID is required and must be a string' };
+    }
+
+    if (!request.properties || typeof request.properties !== 'object') {
+      return { valid: false, error: 'Properties are required and must be an object' };
+    }
+
+    for (const [key, property] of Object.entries(request.properties)) {
+      if (!isConfigProperty(property)) {
+        return { valid: false, error: `Invalid property: ${key}` };
+      }
+
+      if (!this.#validatePropertyValue(property)) {
+        return { valid: false, error: `Invalid value for property: ${key}` };
+      }
+    }
+
+    return { valid: true };
+  }
+
+  #validatePropertyValue(property: ConfigProperty): boolean {
+    try {
+      switch (property.type) {
+        case 'String':
+          return typeof property.value === 'string';
+        case 'Long':
+        case 'Integer':
+        case 'Short':
+          return typeof property.value === 'number' && Number.isInteger(property.value);
+        case 'Double':
+        case 'Float':
+          return typeof property.value === 'number';
+        case 'Boolean':
+          return typeof property.value === 'boolean';
+        case 'Character':
+          return typeof property.value === 'string' && property.value.length === 1;
+        default:
+          return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  #buildConfigurationFormData(request: Omit<ConfigurationRequest, 'instanceAlias'>): URLSearchParams {
+    const formData = new URLSearchParams();
+    
+    formData.append('apply', 'true');
+    
+    if (request.factoryPid) {
+      formData.append('factoryPid', request.factoryPid);
+    }
+    
+    if (request.bundleLocation) {
+      formData.append('bundleLocation', request.bundleLocation);
+    }
+
+    for (const [key, property] of Object.entries(request.properties)) {
+      const value = this.#convertPropertyValue(property);
+      formData.append(key, value);
+      
+      if (property.type && property.type !== 'String') {
+        formData.append(`${key}$type`, property.type);
+      }
+      
+      if (property.cardinality !== undefined) {
+        formData.append(`${key}$cardinality`, property.cardinality.toString());
+      }
+    }
+
+    return formData;
+  }
+
+  #convertPropertyValue(property: ConfigProperty): string {
+    switch (property.type) {
+      case 'Boolean':
+        return property.value ? 'true' : 'false';
+      case 'String':
+      case 'Character':
+        return String(property.value);
+      case 'Long':
+      case 'Integer':
+      case 'Short':
+      case 'Double':
+      case 'Float':
+        return property.value.toString();
+      default:
+        return String(property.value);
+    }
+  }
+
+  #createError(code: OSGI_ERROR_CODES, message: string, details?: any): OSGiError {
+    return {
+      code,
+      message,
+      details,
+      retry: code === OSGI_ERROR_CODES.NETWORK_TIMEOUT
+    };
+  }
+
+  #classifyError(error: unknown): OSGiError {
+    if (error && typeof error === 'object') {
+      if ('code' in error) {
+        const errorCode = (error as { code: string }).code;
+        
+        if (['ECONNREFUSED', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(errorCode)) {
+          return this.#createError(OSGI_ERROR_CODES.NETWORK_TIMEOUT, `Network error: ${errorCode}`, { originalError: error });
+        }
+      }
+      
+      if ('response' in error) {
+        const response = (error as { response: { status?: number } }).response;
+        if (response?.status === 401 || response?.status === 403) {
+          return this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication error: HTTP ${response.status}`, { originalError: error });
+        }
+        if (response?.status && response.status >= 500) {
+          return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Server error: HTTP ${response.status}`, { originalError: error });
+        }
+      }
+    }
+    
+    const message = error instanceof Error ? error.message : String(error);
+    return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, message, { originalError: error });
+  }
+}
