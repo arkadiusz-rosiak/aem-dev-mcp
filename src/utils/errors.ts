@@ -1,10 +1,14 @@
-import { MCPToolResult } from '@/types.js';
+import { MCPToolResult } from '@/types/index.js';
+
+export function extractErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function createErrorResponse(
   error: unknown,
   requestId?: string
 ): MCPToolResult {
-  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorMessage = extractErrorMessage(error);
   
   return {
     content: [{

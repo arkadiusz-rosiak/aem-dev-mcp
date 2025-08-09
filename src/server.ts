@@ -2,7 +2,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { getConfigPath } from '@/utils/config.js';
 import { registerHandlers } from '@/handlers/index.js';
-import { Logger } from '@/utils/logger.js';
+import { createLogger, Logger } from '@/utils/logger.js';
+import { extractErrorMessage } from '@/utils/errors.js';
 
 export class McpAemServer {
   private server: Server;
@@ -11,7 +12,7 @@ export class McpAemServer {
   private isShuttingDown: boolean = false;
 
   constructor() {
-    this.logger = new Logger();
+    this.logger = createLogger();
     this.server = new Server(
       {
         name: 'aem-mcp-server',
@@ -54,7 +55,7 @@ export class McpAemServer {
       this.logger.info('MCP AEM Server started and listening');
     } catch (error) {
       this.logger.error('Failed to start server', { 
-        error: error instanceof Error ? error.message : String(error),
+        error: extractErrorMessage(error),
         stack: error instanceof Error ? error.stack : undefined 
       });
       throw error;
@@ -116,9 +117,9 @@ async function main(): Promise<void> {
     await server.initialize();
     await server.start();
   } catch (error) {
-    const logger = new Logger();
+    const logger = createLogger();
     logger.error('Failed to start MCP AEM Server', { 
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       stack: error instanceof Error ? error.stack : undefined 
     });
     process.exit(1);
@@ -127,7 +128,7 @@ async function main(): Promise<void> {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
-    const logger = new Logger();
+    const logger = createLogger();
     logger.error('Unhandled error in main', { error });
   });
 }

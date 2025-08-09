@@ -47,3 +47,24 @@ export class Logger {
     }
   }
 }
+
+let defaultLogger: Logger | null = null;
+
+export function createLogger(level: LogLevel = 'info'): Logger {
+  return new Logger(level);
+}
+
+export function getDefaultLogger(): Logger {
+  if (!defaultLogger) {
+    defaultLogger = createLogger();
+  }
+  return defaultLogger;
+}
+
+export function setDefaultLogger(logger: Logger): void {
+  defaultLogger = logger;
+}
+
+export function resetDefaultLogger(): void {
+  defaultLogger = null;
+}

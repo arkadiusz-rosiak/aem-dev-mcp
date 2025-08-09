@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as yaml from 'js-yaml';
-import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '@/types.js';
+import { AEMInstance, InstanceAliasConfig, AliasResolutionResult } from '@/types/index.js';
+import { extractErrorMessage } from '@/utils/errors.js';
 
 export class AliasResolver {
   private configPath: string;
@@ -59,7 +60,7 @@ export class AliasResolver {
         this.validateConfig(loadedConfig);
         this.config = loadedConfig;
       } catch (error) {
-        throw new Error(`Failed to load configuration from ${this.configPath}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Failed to load configuration from ${this.configPath}: ${extractErrorMessage(error)}`);
       } finally {
         this.configLock = null;
       }
@@ -107,7 +108,7 @@ export class AliasResolver {
         alias,
         instances: [],
         resolved: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: extractErrorMessage(error)
       };
     }
   }
