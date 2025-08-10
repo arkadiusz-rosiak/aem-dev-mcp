@@ -72,6 +72,17 @@ export const BundleOperationSchema = InstanceSelectionSchema.extend({
   }
 );
 
+export const BundleIdentifierSchema = InstanceSelectionSchema.extend({
+  bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
+  symbolicName: z.string().optional()
+}).refine(
+  (data) => data.bundleId || data.symbolicName,
+  {
+    message: "Either 'bundleId' or 'symbolicName' must be provided",
+    path: ['bundleId', 'symbolicName']
+  }
+);
+
 export const BundleInstallSchema = InstanceSelectionSchema.extend({
   bundleUrl: z.string().url('Invalid bundle URL').optional(),
   bundleFile: z.instanceof(Buffer).optional(),
@@ -102,6 +113,17 @@ export const ComponentOperationSchema = InstanceSelectionSchema.extend({
   componentId: z.number().int().positive('Component ID must be positive').optional(),
   componentName: z.string().optional(),
   action: z.enum(['enable', 'disable'])
+}).refine(
+  (data) => data.componentId || data.componentName,
+  {
+    message: "Either 'componentId' or 'componentName' must be provided",
+    path: ['componentId', 'componentName']
+  }
+);
+
+export const ComponentIdentifierSchema = InstanceSelectionSchema.extend({
+  componentId: z.number().int().positive('Component ID must be positive').optional(),
+  componentName: z.string().optional()
 }).refine(
   (data) => data.componentId || data.componentName,
   {
@@ -171,10 +193,12 @@ export const ConfigurationUnbindSchema = InstanceSelectionSchema.extend({
 
 export type BundleListInput = z.infer<typeof BundleListSchema>;
 export type BundleOperationInput = z.infer<typeof BundleOperationSchema>;
+export type BundleIdentifierInput = z.infer<typeof BundleIdentifierSchema>;
 export type BundleInstallInput = z.infer<typeof BundleInstallSchema>;
 export type BundleBulkOperationInput = z.infer<typeof BundleBulkOperationSchema>;
 export type ComponentListInput = z.infer<typeof ComponentListSchema>;
 export type ComponentOperationInput = z.infer<typeof ComponentOperationSchema>;
+export type ComponentIdentifierInput = z.infer<typeof ComponentIdentifierSchema>;
 export type ComponentBulkOperationInput = z.infer<typeof ComponentBulkOperationSchema>;
 export type ConfigurationListInput = z.infer<typeof ConfigurationListSchema>;
 export type ConfigurationGetInput = z.infer<typeof ConfigurationGetSchema>;

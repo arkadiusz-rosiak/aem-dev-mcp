@@ -24,7 +24,7 @@ describe('AliasResolver', () => {
     it('should resolve alias to instances array', async () => {
       const mockConfig = {
         local: [
-          { url: 'http://localhost:4502', username: 'admin', password: 'admin' }
+          { url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }
         ]
       };
 
@@ -36,9 +36,9 @@ describe('AliasResolver', () => {
       expect(result.resolved).toBe(true);
       expect(result.instances).toHaveLength(1);
       expect(result.instances[0]).toEqual({
-        url: 'http://localhost:4502',
-        username: 'admin',
-        password: 'admin'
+        url: 'http://test.example.com:4502',
+        username: 'testuser',
+        password: 'testpass'
       });
     });
 
@@ -67,7 +67,7 @@ describe('AliasResolver', () => {
   describe('resolveMultipleAliases', () => {
     it('should resolve multiple aliases successfully', async () => {
       const mockConfig = {
-        local: [{ url: 'http://localhost:4502', username: 'admin', password: 'admin' }],
+        local: [{ url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }],
         dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
       };
 
@@ -82,7 +82,7 @@ describe('AliasResolver', () => {
 
     it('should return error if any alias fails to resolve', async () => {
       const mockConfig = {
-        local: [{ url: 'http://localhost:4502', username: 'admin', password: 'admin' }]
+        local: [{ url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }]
       };
 
       (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
@@ -98,7 +98,7 @@ describe('AliasResolver', () => {
   describe('listAliases', () => {
     it('should return list of available aliases', async () => {
       const mockConfig = {
-        local: [{ url: 'http://localhost:4502', username: 'admin', password: 'admin' }],
+        local: [{ url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }],
         dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
       };
 
