@@ -170,32 +170,33 @@ export class ComponentManagementService {
       );
     }
 
+    const operations = componentIds.map(componentId => 
+      action === 'enable' 
+        ? this.enableComponent(instance, componentId)
+        : this.disableComponent(instance, componentId)
+    );
+    const operationResults = await Promise.allSettled(operations);
+
     const results: ComponentOperationResult[] = [];
     let successCount = 0;
     let failureCount = 0;
 
-    for (const componentId of componentIds) {
-      try {
-        const operationResult = action === 'enable' 
-          ? await this.enableComponent(instance, componentId)
-          : await this.disableComponent(instance, componentId);
+    for (let i = 0; i < operationResults.length; i++) {
+      const result = operationResults[i];
+      const componentId = componentIds[i];
 
-        if (operationResult.success) {
-          results.push(operationResult.data);
-          successCount++;
-        } else {
-          results.push({
-            success: false,
-            message: `Failed to ${action} component ${componentId}`,
-            error: operationResult.error as OSGiError
-          });
-          failureCount++;
-        }
-      } catch (error) {
+      if (result.status === 'fulfilled' && result.value.success) {
+        results.push(result.value.data);
+        successCount++;
+      } else {
+        const error = result.status === 'rejected' 
+          ? this.#classifyError(result.reason)
+          : (result.value.error as OSGiError);
+        
         results.push({
           success: false,
           message: `Failed to ${action} component ${componentId}`,
-          error: this.#classifyError(error)
+          error
         });
         failureCount++;
       }

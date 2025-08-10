@@ -38,14 +38,29 @@ export const ConfigPropertySchema = z.object({
   description: z.string().optional()
 });
 
-export const BundleListSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const AEMInstanceSchema = z.object({
+  url: z.string().url('Invalid URL format'),
+  username: z.string().min(1, 'Username cannot be empty'),
+  password: z.string().min(1, 'Password cannot be empty')
+});
+
+export const InstanceSelectionSchema = z.object({
+  aliases: z.array(z.string().min(1, 'Alias cannot be empty')).optional(),
+  instances: z.array(AEMInstanceSchema).optional()
+}).refine(
+  (data) => data.aliases || data.instances,
+  { 
+    message: "Either 'aliases' or 'instances' must be provided",
+    path: ['aliases', 'instances']
+  }
+);
+
+export const BundleListSchema = InstanceSelectionSchema.extend({
   stateFilter: BundleStateSchema.optional(),
   nameFilter: z.string().optional()
 });
 
-export const BundleOperationSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const BundleOperationSchema = InstanceSelectionSchema.extend({
   bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
   symbolicName: z.string().optional(),
   action: z.enum(['start', 'stop', 'uninstall', 'refresh'])
@@ -57,8 +72,7 @@ export const BundleOperationSchema = z.object({
   }
 );
 
-export const BundleInstallSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const BundleInstallSchema = InstanceSelectionSchema.extend({
   bundleUrl: z.string().url('Invalid bundle URL').optional(),
   bundleFile: z.instanceof(Buffer).optional(),
   startLevel: z.number().int().min(1).max(100).optional(),
@@ -72,22 +86,19 @@ export const BundleInstallSchema = z.object({
   }
 );
 
-export const BundleBulkOperationSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const BundleBulkOperationSchema = InstanceSelectionSchema.extend({
   bundleIds: z.array(z.number().int().positive('Bundle ID must be positive'))
     .min(1, 'At least one bundle ID must be provided')
     .max(MAX_BULK_OPERATIONS, `Maximum ${MAX_BULK_OPERATIONS} bundle IDs allowed`),
   action: z.enum(['start', 'stop', 'restart', 'uninstall', 'refresh'])
 });
 
-export const ComponentListSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ComponentListSchema = InstanceSelectionSchema.extend({
   stateFilter: ComponentStateSchema.optional(),
   nameFilter: z.string().optional()
 });
 
-export const ComponentOperationSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ComponentOperationSchema = InstanceSelectionSchema.extend({
   componentId: z.number().int().positive('Component ID must be positive').optional(),
   componentName: z.string().optional(),
   action: z.enum(['enable', 'disable'])
@@ -99,8 +110,7 @@ export const ComponentOperationSchema = z.object({
   }
 );
 
-export const ComponentBulkOperationSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ComponentBulkOperationSchema = InstanceSelectionSchema.extend({
   componentIds: z.array(z.number().int().positive('Component ID must be positive')).optional(),
   componentNames: z.array(z.string().min(1, 'Component name cannot be empty')).optional(),
   action: z.enum(['enable', 'disable'])
@@ -122,18 +132,15 @@ export const ComponentBulkOperationSchema = z.object({
   }
 );
 
-export const ConfigurationListSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ConfigurationListSchema = InstanceSelectionSchema.extend({
   pidFilter: z.string().optional()
 });
 
-export const ConfigurationGetSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ConfigurationGetSchema = InstanceSelectionSchema.extend({
   pid: z.string().min(1, 'PID cannot be empty')
 });
 
-export const ConfigurationCreateSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ConfigurationCreateSchema = InstanceSelectionSchema.extend({
   pid: z.string().min(1, 'PID cannot be empty'),
   properties: z.record(z.string(), ConfigPropertySchema)
     .refine(props => Object.keys(props).length > 0, {
@@ -143,8 +150,7 @@ export const ConfigurationCreateSchema = z.object({
   bundleLocation: z.string().optional()
 });
 
-export const ConfigurationUpdateSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ConfigurationUpdateSchema = InstanceSelectionSchema.extend({
   pid: z.string().min(1, 'PID cannot be empty'),
   properties: z.record(z.string(), ConfigPropertySchema)
     .refine(props => Object.keys(props).length > 0, {
@@ -154,13 +160,11 @@ export const ConfigurationUpdateSchema = z.object({
   bundleLocation: z.string().optional()
 });
 
-export const ConfigurationDeleteSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ConfigurationDeleteSchema = InstanceSelectionSchema.extend({
   pid: z.string().min(1, 'PID cannot be empty')
 });
 
-export const ConfigurationUnbindSchema = z.object({
-  instanceAlias: z.string().min(1, 'Instance alias cannot be empty'),
+export const ConfigurationUnbindSchema = InstanceSelectionSchema.extend({
   pid: z.string().min(1, 'PID cannot be empty'),
   bundleLocation: z.string().optional()
 });

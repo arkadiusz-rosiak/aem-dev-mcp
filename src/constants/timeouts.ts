@@ -9,7 +9,7 @@ export const TIMEOUTS = {
   ALIAS_RESOLUTION: createTimeout(5000),
   CONNECTION_POOL_CLEANUP: createTimeout(60000),
   AGENT_TTL: createTimeout(300000),
-  BUNDLE_INSTALL: createTimeout(30000)
+  BUNDLE_INSTALL: createTimeout(300000)
 } as const;
 
 export type TimeoutKey = keyof typeof TIMEOUTS;

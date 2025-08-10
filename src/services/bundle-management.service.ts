@@ -207,6 +207,14 @@ export class BundleManagementService {
       const installedBundle = bundleListResult.data
         .sort((a, b) => b.id - a.id)[0];
 
+      // Check if bundle is in Installed state (missing dependencies)
+      if (installedBundle && installedBundle.state === 'Installed') {
+        return createFailureResult(
+          this.#createError(OSGI_ERROR_CODES.MISSING_DEPENDENCY, `Bundle installed but has missing dependencies: ${installedBundle.symbolicName}`),
+          Date.now() - startTime
+        );
+      }
+
       return createSuccessResult({
         success: true,
         bundle: installedBundle,
@@ -242,48 +250,29 @@ export class BundleManagementService {
       );
     }
 
+    const operations = bundleIds.map(bundleId => this.#executeBundleOperation(instance, bundleId, action));
+    const operationResults = await Promise.allSettled(operations);
+
     const results: BundleOperationResult[] = [];
     let successCount = 0;
     let failureCount = 0;
 
-    for (const bundleId of bundleIds) {
-      try {
-        let operationResult: OperationResult<BundleOperationResult>;
-        
-        switch (action) {
-          case 'start':
-            operationResult = await this.startBundle(instance, bundleId);
-            break;
-          case 'stop':
-            operationResult = await this.stopBundle(instance, bundleId);
-            break;
-          case 'restart':
-            operationResult = await this.restartBundle(instance, bundleId);
-            break;
-          case 'uninstall':
-            operationResult = await this.uninstallBundle(instance, bundleId);
-            break;
-          case 'refresh':
-            operationResult = await this.refreshBundle(instance, bundleId);
-            break;
-        }
+    for (let i = 0; i < operationResults.length; i++) {
+      const result = operationResults[i];
+      const bundleId = bundleIds[i];
 
-        if (operationResult.success) {
-          results.push(operationResult.data);
-          successCount++;
-        } else {
-          results.push({
-            success: false,
-            message: `Failed to ${action} bundle ${bundleId}`,
-            error: operationResult.error as OSGiError
-          });
-          failureCount++;
-        }
-      } catch (error) {
+      if (result.status === 'fulfilled' && result.value.success) {
+        results.push(result.value.data);
+        successCount++;
+      } else {
+        const error = result.status === 'rejected' 
+          ? this.#classifyError(result.reason)
+          : (result.value.error as OSGiError);
+        
         results.push({
           success: false,
           message: `Failed to ${action} bundle ${bundleId}`,
-          error: this.#classifyError(error)
+          error
         });
         failureCount++;
       }
@@ -299,6 +288,25 @@ export class BundleManagementService {
     };
 
     return createSuccessResult(bulkResult, Date.now() - startTime);
+  }
+
+  async #executeBundleOperation(
+    instance: AEMInstance,
+    bundleId: number,
+    action: 'start' | 'stop' | 'restart' | 'uninstall' | 'refresh'
+  ): Promise<OperationResult<BundleOperationResult>> {
+    switch (action) {
+      case 'start':
+        return this.startBundle(instance, bundleId);
+      case 'stop':
+        return this.stopBundle(instance, bundleId);
+      case 'restart':
+        return this.restartBundle(instance, bundleId);
+      case 'uninstall':
+        return this.uninstallBundle(instance, bundleId);
+      case 'refresh':
+        return this.refreshBundle(instance, bundleId);
+    }
   }
 
   async #performBundleAction(
