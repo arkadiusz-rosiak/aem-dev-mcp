@@ -9,65 +9,55 @@ import {
   OSGI_ERROR_CODES,
   isConfigProperty,
   isConfigPropertyType,
-  TimeoutMs
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
 import { isOk, isAuthError } from '@/utils/http-status.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
-import { createLogger } from '@/utils/logger.js';
+import { BaseOSGiService, BaseOSGiServiceConfig } from '@/utils/base-osgi-service.js';
 
-interface ConfigurationManagementConfig {
-  readonly timeout: TimeoutMs;
-}
+interface ConfigurationManagementConfig extends BaseOSGiServiceConfig {}
 
 const DEFAULT_CONFIG: ConfigurationManagementConfig = {
-  timeout: TIMEOUTS.DEFAULT
+  timeout: TIMEOUTS.DEFAULT,
+  actionDelayMs: 1000
 } as const;
 
 interface ConfigListResponse {
   readonly configurations?: readonly unknown[];
 }
 
-export class ConfigurationManagementService {
-  readonly #httpClient: AemHttpClient;
+export class ConfigurationManagementService extends BaseOSGiService {
   readonly #config: ConfigurationManagementConfig;
-  readonly #logger = createLogger();
 
   constructor(httpClient: AemHttpClient, config: Partial<ConfigurationManagementConfig> = {}) {
-    this.#httpClient = httpClient;
-    this.#config = { ...DEFAULT_CONFIG, ...config };
+    const fullConfig = { ...DEFAULT_CONFIG, ...config };
+    super(httpClient, fullConfig);
+    this.#config = fullConfig;
   }
 
   async listConfigurations(instance: AEMInstance, pidFilter?: string): Promise<OperationResult<OSGiConfiguration[], OSGiError>> {
     const startTime = Date.now();
     
     try {
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.makeAuthenticatedRequest<ConfigListResponse>(
         instance,
         '/system/console/configMgr.json',
         'GET',
         undefined,
-        this.#config.timeout
+        this.#config.timeout,
+        'Configuration console unavailable',
+        'Authentication required for configuration console'
       );
 
-      if (!isOk(response.status)) {
-        if (isAuthError(response.status)) {
-          return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required for configuration console (HTTP ${response.status})`),
-            Date.now() - startTime
-          );
-        }
-        return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration console unavailable (HTTP ${response.status})`),
-          Date.now() - startTime
-        );
+      if (!response.success) {
+        return createOSGiFailureResult(response.error, Date.now() - startTime);
       }
 
-      const configData = response.data as ConfigListResponse;
+      const configData = response.data;
       if (!configData.configurations) {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid configuration data received'),
+          this.createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid configuration data received'),
           Date.now() - startTime
         );
       }
@@ -78,7 +68,7 @@ export class ConfigurationManagementService {
       return createOSGiSuccessResult(filteredConfigurations, Date.now() - startTime);
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -88,31 +78,24 @@ export class ConfigurationManagementService {
     const startTime = Date.now();
     
     try {
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.makeAuthenticatedRequest(
         instance,
         `/system/console/configMgr/${encodeURIComponent(pid)}.json`,
         'GET',
         undefined,
-        this.#config.timeout
+        this.#config.timeout,
+        'Configuration unavailable',
+        'Authentication required'
       );
 
-      if (!isOk(response.status)) {
-        if (isAuthError(response.status)) {
+      if (!response.success) {
+        if (response.error.code === OSGI_ERROR_CODES.BUNDLE_NOT_FOUND) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Configuration ${pid} not found`),
             Date.now() - startTime
           );
         }
-        if (response.status === 404) {
-          return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Configuration ${pid} not found`),
-            Date.now() - startTime
-          );
-        }
-        return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unavailable (HTTP ${response.status})`),
-          Date.now() - startTime
-        );
+        return createOSGiFailureResult(response.error, Date.now() - startTime);
       }
 
       const configData = response.data;
@@ -120,7 +103,7 @@ export class ConfigurationManagementService {
       
       if (!configuration) {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Failed to parse configuration data'),
+          this.createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Failed to parse configuration data'),
           Date.now() - startTime
         );
       }
@@ -128,7 +111,7 @@ export class ConfigurationManagementService {
       return createOSGiSuccessResult(configuration, Date.now() - startTime);
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -141,14 +124,14 @@ export class ConfigurationManagementService {
       const validationResult = this.#validateConfigurationRequest(request);
       if (!validationResult.valid) {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
+          this.createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
           Date.now() - startTime
         );
       }
 
       const formData = this.#buildConfigurationFormData(request);
 
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.httpClient.makeRequest(
         instance,
         '/system/console/configMgr/[Temporary PID replaced by real PID upon save]',
         'POST',
@@ -159,12 +142,12 @@ export class ConfigurationManagementService {
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            this.createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration creation failed (HTTP ${response.status})`),
+          this.createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration creation failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
@@ -184,7 +167,7 @@ export class ConfigurationManagementService {
 
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -197,7 +180,7 @@ export class ConfigurationManagementService {
       const validationResult = this.#validateConfigurationRequest(request);
       if (!validationResult.valid) {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
+          this.createError(OSGI_ERROR_CODES.CONFIGURATION_TYPE_MISMATCH, validationResult.error || 'Invalid configuration request'),
           Date.now() - startTime
         );
       }
@@ -209,7 +192,7 @@ export class ConfigurationManagementService {
 
       const formData = this.#buildConfigurationFormData(request);
 
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.httpClient.makeRequest(
         instance,
         `/system/console/configMgr/${encodeURIComponent(request.pid)}`,
         'POST',
@@ -220,12 +203,12 @@ export class ConfigurationManagementService {
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            this.createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration update failed (HTTP ${response.status})`),
+          this.createError(OSGI_ERROR_CODES.CONFIGURATION_CONFLICT, `Configuration update failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
@@ -245,7 +228,7 @@ export class ConfigurationManagementService {
 
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -263,7 +246,7 @@ export class ConfigurationManagementService {
       const formData = new URLSearchParams();
       formData.append('delete', 'true');
 
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.httpClient.makeRequest(
         instance,
         `/system/console/configMgr/${encodeURIComponent(pid)}`,
         'POST',
@@ -274,12 +257,12 @@ export class ConfigurationManagementService {
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            this.createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration deletion failed (HTTP ${response.status})`),
+          this.createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration deletion failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
@@ -291,7 +274,7 @@ export class ConfigurationManagementService {
 
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -313,7 +296,7 @@ export class ConfigurationManagementService {
         formData.append('bundleLocation', bundleLocation);
       }
 
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.httpClient.makeRequest(
         instance,
         `/system/console/configMgr/${encodeURIComponent(pid)}`,
         'POST',
@@ -324,12 +307,12 @@ export class ConfigurationManagementService {
       if (!isOk(response.status)) {
         if (isAuthError(response.status)) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            this.createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
             Date.now() - startTime
           );
         }
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unbind failed (HTTP ${response.status})`),
+          this.createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Configuration unbind failed (HTTP ${response.status})`),
           Date.now() - startTime
         );
       }
@@ -349,7 +332,7 @@ export class ConfigurationManagementService {
 
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -365,7 +348,7 @@ export class ConfigurationManagementService {
           configurations.push(configuration);
         }
       } catch (error) {
-        this.#logger.warn?.('Failed to parse configuration data', { item, error });
+        this.logger.warn('Failed to parse configuration data', { item, error });
       }
     }
 
@@ -535,37 +518,4 @@ export class ConfigurationManagementService {
     }
   }
 
-  #createError(code: OSGI_ERROR_CODES, message: string, details?: unknown): OSGiError {
-    return {
-      code,
-      message,
-      details,
-      retry: code === OSGI_ERROR_CODES.NETWORK_TIMEOUT
-    };
-  }
-
-  #classifyError(error: unknown): OSGiError {
-    if (error && typeof error === 'object') {
-      if ('code' in error) {
-        const errorCode = (error as { code: string }).code;
-        
-        if (['ECONNREFUSED', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(errorCode)) {
-          return this.#createError(OSGI_ERROR_CODES.NETWORK_TIMEOUT, `Network error: ${errorCode}`, { originalError: error });
-        }
-      }
-      
-      if ('response' in error) {
-        const response = (error as { response: { status?: number } }).response;
-        if (response?.status === 401 || response?.status === 403) {
-          return this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication error: HTTP ${response.status}`, { originalError: error });
-        }
-        if (response?.status && response.status >= 500) {
-          return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Server error: HTTP ${response.status}`, { originalError: error });
-        }
-      }
-    }
-    
-    const message = error instanceof Error ? error.message : String(error);
-    return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, message, { originalError: error });
-  }
 }

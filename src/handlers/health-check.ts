@@ -189,7 +189,7 @@ export async function handleHealthCheck(
     };
     
   } catch (error) {
-    logger?.error?.('Health check failed', { error, requestId });
+    logger.error('Health check failed', { error, requestId });
     
     const errorMessage = error instanceof z.ZodError 
       ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`

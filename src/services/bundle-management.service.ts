@@ -13,16 +13,13 @@ import {
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
-import { isOk, isAuthError } from '@/utils/http-status.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
-import { createLogger } from '@/utils/logger.js';
+import { BaseOSGiService, BaseOSGiServiceConfig } from '@/utils/base-osgi-service.js';
+import { performBulkOperation, BulkOperationConfig } from '@/utils/bulk-operations.js';
 
-interface BundleManagementConfig {
-  readonly timeout: TimeoutMs;
+interface BundleManagementConfig extends BaseOSGiServiceConfig, BulkOperationConfig {
   readonly installTimeout: TimeoutMs;
-  readonly maxBulkOperations: number;
   readonly maxBundleSize: number;
-  readonly actionDelayMs: number;
   readonly installDelayMs: number;
   readonly restartDelayMs: number;
 }
@@ -42,45 +39,37 @@ interface BundleListResponse {
   readonly data?: readonly unknown[];
 }
 
-export class BundleManagementService {
-  readonly #httpClient: AemHttpClient;
+export class BundleManagementService extends BaseOSGiService {
   readonly #config: BundleManagementConfig;
-  readonly #logger = createLogger();
 
   constructor(httpClient: AemHttpClient, config: Partial<BundleManagementConfig> = {}) {
-    this.#httpClient = httpClient;
-    this.#config = { ...DEFAULT_CONFIG, ...config };
+    const fullConfig = { ...DEFAULT_CONFIG, ...config };
+    super(httpClient, fullConfig);
+    this.#config = fullConfig;
   }
 
   async listBundles(instance: AEMInstance, stateFilter?: BundleState, nameFilter?: string): Promise<OperationResult<OSGiBundle[], OSGiError>> {
     const startTime = Date.now();
     
     try {
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.makeAuthenticatedRequest<BundleListResponse>(
         instance,
         '/system/console/bundles.json',
         'GET',
         undefined,
-        this.#config.timeout
+        this.#config.timeout,
+        'Bundle console unavailable',
+        'Authentication required for bundle console'
       );
 
-      if (!isOk(response.status)) {
-        if (isAuthError(response.status)) {
-          return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required for bundle console (HTTP ${response.status})`),
-            Date.now() - startTime
-          );
-        }
-        return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Bundle console unavailable (HTTP ${response.status})`),
-          Date.now() - startTime
-        );
+      if (!response.success) {
+        return createOSGiFailureResult(response.error, Date.now() - startTime);
       }
 
-      const bundleData = response.data as BundleListResponse;
+      const bundleData = response.data;
       if (!bundleData.data) {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid bundle data received'),
+          this.createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid bundle data received'),
           Date.now() - startTime
         );
       }
@@ -91,7 +80,7 @@ export class BundleManagementService {
       return createOSGiSuccessResult(filteredBundles, Date.now() - startTime);
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -141,7 +130,7 @@ export class BundleManagementService {
     try {
       if (!request.bundleUrl && !request.bundleFile) {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, 'Either bundleUrl or bundleFile must be provided'),
+          this.createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, 'Either bundleUrl or bundleFile must be provided'),
           Date.now() - startTime
         );
       }
@@ -153,7 +142,7 @@ export class BundleManagementService {
         const validationResult = this.#validateBundleFile(request.bundleFile);
         if (!validationResult.valid) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, validationResult.error || 'Invalid bundle file'),
+            this.createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, validationResult.error || 'Invalid bundle file'),
             Date.now() - startTime
           );
         }
@@ -186,28 +175,27 @@ export class BundleManagementService {
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
       } else {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, 'Invalid bundle installation request'),
+          this.createError(OSGI_ERROR_CODES.INVALID_BUNDLE_FORMAT, 'Invalid bundle installation request'),
           Date.now() - startTime
         );
       }
 
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.makeAuthenticatedRequest(
         instance,
         '/system/console/bundles',
         'POST',
         formData,
-        this.#config.installTimeout
+        this.#config.installTimeout,
+        'Bundle installation failed',
+        'Authentication required'
       );
 
-      if (!isOk(response.status)) {
-        if (isAuthError(response.status)) {
-          return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
-            Date.now() - startTime
-          );
+      if (!response.success) {
+        if (response.error.code === OSGI_ERROR_CODES.PERMISSION_DENIED) {
+          return createOSGiFailureResult(response.error, Date.now() - startTime);
         }
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.BUNDLE_RESOLUTION_FAILED, `Bundle installation failed (HTTP ${response.status})`),
+          this.createError(OSGI_ERROR_CODES.BUNDLE_RESOLUTION_FAILED, response.error.message),
           Date.now() - startTime
         );
       }
@@ -228,7 +216,7 @@ export class BundleManagementService {
       // Check if bundle is in Installed state (missing dependencies)
       if (installedBundle && installedBundle.state === 'Installed') {
         return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.MISSING_DEPENDENCY, `Bundle installed but has missing dependencies: ${installedBundle.symbolicName}`),
+          this.createError(OSGI_ERROR_CODES.MISSING_DEPENDENCY, `Bundle installed but has missing dependencies: ${installedBundle.symbolicName}`),
           Date.now() - startTime
         );
       }
@@ -241,7 +229,7 @@ export class BundleManagementService {
 
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -252,62 +240,13 @@ export class BundleManagementService {
     bundleIds: readonly number[],
     action: 'start' | 'stop' | 'restart' | 'uninstall' | 'refresh'
   ): Promise<OperationResult<BulkOperationResult<BundleOperationResult>, OSGiError>> {
-    const startTime = Date.now();
-
-    if (bundleIds.length === 0) {
-      return createOSGiFailureResult(
-        this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'No bundle IDs provided'),
-        Date.now() - startTime
-      );
-    }
-
-    if (bundleIds.length > this.#config.maxBulkOperations) {
-      return createOSGiFailureResult(
-        this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Too many bundles. Maximum ${this.#config.maxBulkOperations} allowed`),
-        Date.now() - startTime
-      );
-    }
-
-    const operations = bundleIds.map(bundleId => this.#executeBundleOperation(instance, bundleId, action));
-    const operationResults = await Promise.allSettled(operations);
-
-    const results: BundleOperationResult[] = [];
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (let i = 0; i < operationResults.length; i++) {
-      const result = operationResults[i];
-      const bundleId = bundleIds[i];
-
-      if (result.status === 'fulfilled' && result.value.success) {
-        results.push(result.value.data);
-        successCount++;
-      } else {
-        const error = result.status === 'rejected' 
-          ? this.#classifyError(result.reason)
-          : result.status === 'fulfilled' && !result.value.success
-            ? result.value.error
-            : this.#classifyError(new Error('Unknown operation failure'));
-        
-        results.push({
-          success: false,
-          message: `Failed to ${action} bundle ${bundleId}`,
-          error
-        });
-        failureCount++;
-      }
-    }
-
-    const bulkResult: BulkOperationResult<BundleOperationResult> = {
-      success: successCount > 0,
-      results,
-      message: `${action} operation completed: ${successCount} successful, ${failureCount} failed`,
-      totalCount: bundleIds.length,
-      successCount,
-      failureCount
-    };
-
-    return createOSGiSuccessResult(bulkResult, Date.now() - startTime);
+    return performBulkOperation(
+      instance,
+      bundleIds,
+      action,
+      (inst, bundleId) => this.#executeBundleOperation(inst, bundleId, action),
+      this.#config
+    );
   }
 
   async #executeBundleOperation(
@@ -340,34 +279,27 @@ export class BundleManagementService {
       const formData = new URLSearchParams();
       formData.append('action', action);
 
-      const response = await this.#httpClient.makeRequest(
+      const response = await this.makeAuthenticatedRequest(
         instance,
         `/system/console/bundles/${bundleId}`,
         'POST',
         formData.toString(),
-        this.#config.timeout
+        this.#config.timeout,
+        `Bundle ${action} failed`,
+        'Authentication required'
       );
 
-      if (!isOk(response.status)) {
-        if (isAuthError(response.status)) {
+      if (!response.success) {
+        if (response.error.code === OSGI_ERROR_CODES.BUNDLE_NOT_FOUND) {
           return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication required (HTTP ${response.status})`),
+            this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${bundleId} not found`),
             Date.now() - startTime
           );
         }
-        if (response.status === 404) {
-          return createOSGiFailureResult(
-            this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${bundleId} not found`),
-            Date.now() - startTime
-          );
-        }
-        return createOSGiFailureResult(
-          this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Bundle ${action} failed (HTTP ${response.status})`),
-          Date.now() - startTime
-        );
+        return createOSGiFailureResult(response.error, Date.now() - startTime);
       }
 
-      await new Promise(resolve => setTimeout(resolve, this.#config.actionDelayMs));
+      await this.actionDelay();
 
       const bundleResult = await this.#getBundleById(instance, bundleId);
       if (!bundleResult.success) {
@@ -382,7 +314,7 @@ export class BundleManagementService {
 
     } catch (error) {
       return createOSGiFailureResult(
-        this.#classifyError(error),
+        this.classifyError(error),
         Date.now() - startTime
       );
     }
@@ -397,7 +329,7 @@ export class BundleManagementService {
     const bundle = listResult.data.find(b => b.id === bundleId);
     if (!bundle) {
       return createOSGiFailureResult(
-        this.#createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${bundleId} not found`),
+        this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${bundleId} not found`),
         0
       );
     }
@@ -406,30 +338,22 @@ export class BundleManagementService {
   }
 
   #parseBundles(bundleData: readonly unknown[]): OSGiBundle[] {
-    const bundles: OSGiBundle[] = [];
-
-    for (const item of bundleData) {
-      try {
-        if (this.#isValidBundleData(item)) {
-          const bundle: OSGiBundle = {
-            id: item.id,
-            name: item.name || '',
-            symbolicName: item.symbolicName || '',
-            version: item.version || '',
-            state: item.state && isBundleState(item.state) ? item.state : 'Installed',
-            category: item.category,
-            stateRaw: item.stateRaw || 0,
-            fragment: Boolean(item.fragment),
-            imported: Boolean(item.imported)
-          };
-          bundles.push(bundle);
-        }
-      } catch (error) {
-        this.#logger.warn?.('Failed to parse bundle data', { item, error });
+    return this.parseItems(bundleData, (item) => {
+      if (this.#isValidBundleData(item)) {
+        return {
+          id: item.id,
+          name: item.name || '',
+          symbolicName: item.symbolicName || '',
+          version: item.version || '',
+          state: item.state && isBundleState(item.state) ? item.state : 'Installed',
+          category: item.category,
+          stateRaw: item.stateRaw || 0,
+          fragment: Boolean(item.fragment),
+          imported: Boolean(item.imported)
+        };
       }
-    }
-
-    return bundles;
+      return null;
+    });
   }
 
   #isValidBundleData(item: unknown): item is { id: number; symbolicName: string; name?: string; version?: string; state?: string; category?: string; stateRaw?: number; fragment?: boolean; imported?: boolean } {
@@ -450,50 +374,9 @@ export class BundleManagementService {
       filtered = filtered.filter(bundle => bundle.state === stateFilter);
     }
 
-    if (nameFilter) {
-      const filter = nameFilter.toLowerCase();
-      filtered = filtered.filter(bundle => 
-        bundle.name.toLowerCase().includes(filter) ||
-        bundle.symbolicName.toLowerCase().includes(filter)
-      );
-    }
-
-    return filtered;
+    return this.filterByName(filtered, nameFilter);
   }
 
-  #createError(code: OSGI_ERROR_CODES, message: string, details?: unknown): OSGiError {
-    return {
-      code,
-      message,
-      details,
-      retry: code === OSGI_ERROR_CODES.NETWORK_TIMEOUT
-    };
-  }
-
-  #classifyError(error: unknown): OSGiError {
-    if (error && typeof error === 'object') {
-      if ('code' in error) {
-        const errorCode = (error as { code: string }).code;
-        
-        if (['ECONNREFUSED', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(errorCode)) {
-          return this.#createError(OSGI_ERROR_CODES.NETWORK_TIMEOUT, `Network error: ${errorCode}`, { originalError: error });
-        }
-      }
-      
-      if ('response' in error) {
-        const response = (error as { response: { status?: number } }).response;
-        if (response?.status === 401 || response?.status === 403) {
-          return this.#createError(OSGI_ERROR_CODES.PERMISSION_DENIED, `Authentication error: HTTP ${response.status}`, { originalError: error });
-        }
-        if (response?.status && response.status >= 500) {
-          return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, `Server error: HTTP ${response.status}`, { originalError: error });
-        }
-      }
-    }
-    
-    const message = error instanceof Error ? error.message : String(error);
-    return this.#createError(OSGI_ERROR_CODES.OPERATION_FAILED, message, { originalError: error });
-  }
 
   #validateBundleFile(bundleFile: Buffer): { valid: boolean; error?: string } {
     if (bundleFile.length === 0) {
