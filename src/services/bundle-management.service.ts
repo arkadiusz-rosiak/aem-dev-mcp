@@ -5,12 +5,10 @@ import {
   BundleOperationResult,
   BulkOperationResult,
   BundleInstallRequest,
-  BundleOperationRequest,
   OSGiError,
   OSGI_ERROR_CODES,
   BundleState,
   isBundleState,
-  isOSGiBundle,
   TimeoutMs
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
@@ -33,7 +31,7 @@ const DEFAULT_CONFIG: BundleManagementConfig = {
 
 interface BundleListResponse {
   readonly s?: readonly [number, number];
-  readonly data?: readonly any[];
+  readonly data?: readonly unknown[];
 }
 
 export class BundleManagementService {
@@ -141,7 +139,7 @@ export class BundleManagementService {
       }
 
       let formData: FormData | string;
-      let headers: Record<string, string> = {};
+      const headers: Record<string, string> = {};
 
       if (request.bundleFile) {
         formData = new FormData();
@@ -380,7 +378,7 @@ export class BundleManagementService {
     return createSuccessResult(bundle, 0);
   }
 
-  #parseBundles(bundleData: readonly any[]): OSGiBundle[] {
+  #parseBundles(bundleData: readonly unknown[]): OSGiBundle[] {
     const bundles: OSGiBundle[] = [];
 
     for (const item of bundleData) {
@@ -407,12 +405,14 @@ export class BundleManagementService {
     return bundles;
   }
 
-  #isValidBundleData(item: any): boolean {
+  #isValidBundleData(item: unknown): item is { id: number; symbolicName: string; name?: string; version?: string; state?: string; category?: string; stateRaw?: number; fragment?: boolean; imported?: boolean } {
     return (
       typeof item === 'object' &&
       item !== null &&
-      typeof item.id === 'number' &&
-      typeof item.symbolicName === 'string'
+      'id' in item &&
+      'symbolicName' in item &&
+      typeof (item as Record<string, unknown>).id === 'number' &&
+      typeof (item as Record<string, unknown>).symbolicName === 'string'
     );
   }
 
@@ -434,7 +434,7 @@ export class BundleManagementService {
     return filtered;
   }
 
-  #createError(code: OSGI_ERROR_CODES, message: string, details?: any): OSGiError {
+  #createError(code: OSGI_ERROR_CODES, message: string, details?: unknown): OSGiError {
     return {
       code,
       message,

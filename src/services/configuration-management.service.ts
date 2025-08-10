@@ -7,8 +7,6 @@ import {
   ConfigProperty,
   OSGiError,
   OSGI_ERROR_CODES,
-  ConfigPropertyType,
-  isConfigPropertyType,
   isConfigProperty,
   TimeoutMs
 } from '@/types/index.js';
@@ -27,7 +25,7 @@ const DEFAULT_CONFIG: ConfigurationManagementConfig = {
 } as const;
 
 interface ConfigListResponse {
-  readonly configurations?: readonly any[];
+  readonly configurations?: readonly unknown[];
 }
 
 export class ConfigurationManagementService {
@@ -360,7 +358,7 @@ export class ConfigurationManagementService {
     }
   }
 
-  #parseConfigurations(configData: readonly any[]): OSGiConfiguration[] {
+  #parseConfigurations(configData: readonly unknown[]): OSGiConfiguration[] {
     const configurations: OSGiConfiguration[] = [];
 
     for (const item of configData) {
@@ -377,46 +375,57 @@ export class ConfigurationManagementService {
     return configurations;
   }
 
-  #parseConfiguration(item: any): OSGiConfiguration | null {
+  #parseConfiguration(item: unknown): OSGiConfiguration | null {
     if (!this.#isValidConfigurationData(item)) {
       return null;
     }
 
+    const typedItem = item as { 
+      pid: string; 
+      title?: string; 
+      description?: string; 
+      properties?: Record<string, unknown>; 
+      factoryPid?: string; 
+      bundleLocation?: string 
+    };
+    
     const properties: Record<string, ConfigProperty> = {};
 
-    if (item.properties && typeof item.properties === 'object') {
-      for (const [key, propData] of Object.entries(item.properties)) {
+    if (typedItem.properties && typeof typedItem.properties === 'object') {
+      for (const [key, propData] of Object.entries(typedItem.properties)) {
         if (this.#isValidPropertyData(propData)) {
+          const typedProp = propData as { value: unknown; type?: string; cardinality?: number; description?: string };
           properties[key] = {
             name: key,
-            value: (propData as any).value,
-            type: (propData as any).type || 'String',
-            cardinality: (propData as any).cardinality,
-            description: (propData as any).description
+            value: typedProp.value,
+            type: typedProp.type || 'String',
+            cardinality: typedProp.cardinality,
+            description: typedProp.description
           };
         }
       }
     }
 
     return {
-      pid: item.pid,
-      title: item.title,
-      description: item.description,
+      pid: typedItem.pid,
+      title: typedItem.title,
+      description: typedItem.description,
       properties,
-      factoryPid: item.factoryPid,
-      bundleLocation: item.bundleLocation
+      factoryPid: typedItem.factoryPid,
+      bundleLocation: typedItem.bundleLocation
     };
   }
 
-  #isValidConfigurationData(item: any): boolean {
+  #isValidConfigurationData(item: unknown): item is { pid: string; title?: string; description?: string; properties?: Record<string, unknown>; factoryPid?: string; bundleLocation?: string } {
     return (
       typeof item === 'object' &&
       item !== null &&
-      typeof item.pid === 'string'
+      'pid' in item &&
+      typeof (item as Record<string, unknown>).pid === 'string'
     );
   }
 
-  #isValidPropertyData(prop: any): boolean {
+  #isValidPropertyData(prop: unknown): boolean {
     return (
       typeof prop === 'object' &&
       prop !== null &&
@@ -529,7 +538,7 @@ export class ConfigurationManagementService {
     }
   }
 
-  #createError(code: OSGI_ERROR_CODES, message: string, details?: any): OSGiError {
+  #createError(code: OSGI_ERROR_CODES, message: string, details?: unknown): OSGiError {
     return {
       code,
       message,

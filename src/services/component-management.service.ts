@@ -4,12 +4,10 @@ import {
   OSGiComponent,
   ComponentOperationResult,
   BulkOperationResult,
-  ComponentOperationRequest,
   OSGiError,
   OSGI_ERROR_CODES,
   ComponentState,
   isComponentState,
-  isOSGiComponent,
   TimeoutMs
 } from '@/types/index.js';
 import { AemHttpClient } from '@/services/http-client.js';
@@ -29,7 +27,7 @@ const DEFAULT_CONFIG: ComponentManagementConfig = {
 } as const;
 
 interface ComponentListResponse {
-  readonly data?: readonly any[];
+  readonly data?: readonly unknown[];
 }
 
 export class ComponentManagementService {
@@ -340,7 +338,7 @@ export class ComponentManagementService {
     }
   }
 
-  #parseComponents(componentData: readonly any[]): OSGiComponent[] {
+  #parseComponents(componentData: readonly unknown[]): OSGiComponent[] {
     const components: OSGiComponent[] = [];
 
     for (const item of componentData) {
@@ -357,7 +355,7 @@ export class ComponentManagementService {
     return components;
   }
 
-  #parseComponent(item: any): OSGiComponent | null {
+  #parseComponent(item: unknown): OSGiComponent | null {
     if (!this.#isValidComponentData(item)) {
       return null;
     }
@@ -371,12 +369,14 @@ export class ComponentManagementService {
     };
   }
 
-  #isValidComponentData(item: any): boolean {
+  #isValidComponentData(item: unknown): item is { id: number; name: string; state?: string; pid?: string; props?: Record<string, unknown> } {
     return (
       typeof item === 'object' &&
       item !== null &&
-      typeof item.id === 'number' &&
-      typeof item.name === 'string'
+      'id' in item &&
+      'name' in item &&
+      typeof (item as Record<string, unknown>).id === 'number' &&
+      typeof (item as Record<string, unknown>).name === 'string'
     );
   }
 
@@ -398,7 +398,7 @@ export class ComponentManagementService {
     return filtered;
   }
 
-  #createError(code: OSGI_ERROR_CODES, message: string, details?: any): OSGiError {
+  #createError(code: OSGI_ERROR_CODES, message: string, details?: unknown): OSGiError {
     return {
       code,
       message,
