@@ -20,7 +20,7 @@ describe('ConfigurationManagementService', () => {
     mockHttpClient = new AemHttpClient() as jest.Mocked<AemHttpClient>;
     configService = new ConfigurationManagementService(mockHttpClient);
     testInstance = {
-      url: 'http://test.example.com:4503',
+      url: 'http://test-author.example.com:4502',
       username: 'testuser',
       password: 'testpass'
     } as const;

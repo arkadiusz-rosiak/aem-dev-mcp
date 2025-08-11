@@ -24,7 +24,7 @@ describe('HealthService', () => {
     mockHttpClient = new AemHttpClient() as jest.Mocked<AemHttpClient>;
     healthService = new HealthService(mockHttpClient);
     testInstance = {
-      url: 'http://test.example.com:4502',
+      url: 'http://test-author.example.com:4502',
       username: 'testuser',
       password: 'testpass'
     } as const;

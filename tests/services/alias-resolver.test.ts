@@ -24,7 +24,7 @@ describe('AliasResolver', () => {
     it('should resolve alias to instances array', async () => {
       const mockConfig = {
         local: [
-          { url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }
+          { url: 'http://test-author.example.com:4502', username: 'testuser', password: 'testpass' }
         ]
       };
 
@@ -36,7 +36,7 @@ describe('AliasResolver', () => {
       expect(result.resolved).toBe(true);
       expect(result.instances).toHaveLength(1);
       expect(result.instances[0]).toEqual({
-        url: 'http://test.example.com:4502',
+        url: 'http://test-author.example.com:4502',
         username: 'testuser',
         password: 'testpass'
       });
@@ -67,8 +67,8 @@ describe('AliasResolver', () => {
   describe('resolveMultipleAliases', () => {
     it('should resolve multiple aliases successfully', async () => {
       const mockConfig = {
-        local: [{ url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }],
-        dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
+        local: [{ url: 'http://test-author.example.com:4502', username: 'testuser', password: 'testpass' }],
+        dev: [{ url: 'http://test-publish.example.com:4503', username: 'admin', password: 'dev-pass' }]
       };
 
       (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
@@ -82,7 +82,7 @@ describe('AliasResolver', () => {
 
     it('should return error if any alias fails to resolve', async () => {
       const mockConfig = {
-        local: [{ url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }]
+        local: [{ url: 'http://test-author.example.com:4502', username: 'testuser', password: 'testpass' }]
       };
 
       (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
@@ -98,8 +98,8 @@ describe('AliasResolver', () => {
   describe('listAliases', () => {
     it('should return list of available aliases', async () => {
       const mockConfig = {
-        local: [{ url: 'http://test.example.com:4502', username: 'testuser', password: 'testpass' }],
-        dev: [{ url: 'http://dev:4502', username: 'admin', password: 'dev-pass' }]
+        local: [{ url: 'http://test-author.example.com:4502', username: 'testuser', password: 'testpass' }],
+        dev: [{ url: 'http://test-publish.example.com:4503', username: 'admin', password: 'dev-pass' }]
       };
 
       (fs.promises.readFile as jest.Mock).mockResolvedValue('mock-yaml-content');
