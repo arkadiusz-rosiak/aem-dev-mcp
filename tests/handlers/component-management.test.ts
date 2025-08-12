@@ -2,9 +2,11 @@ import {
   handleComponentList,
   handleComponentEnable,
   handleComponentDisable,
+  handleComponentDetails,
   componentListTool,
   componentEnableTool,
-  componentDisableTool
+  componentDisableTool,
+  componentDetailsTool
 } from '@/handlers/component-management.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
@@ -91,13 +93,22 @@ describe('Component Management Handlers', () => {
     it('should have correct component enable tool definition', () => {
       expect(componentEnableTool.name).toBe('aem_component_enable');
       expect(componentEnableTool.description).toContain('Enable OSGi components');
-      expect(componentEnableTool.inputSchema.properties).toHaveProperty('componentId');
       expect(componentEnableTool.inputSchema.properties).toHaveProperty('componentName');
+      expect(componentEnableTool.inputSchema.properties).not.toHaveProperty('componentId');
+      expect(componentEnableTool.inputSchema.required).toContain('componentName');
     });
 
     it('should have correct component disable tool definition', () => {
       expect(componentDisableTool.name).toBe('aem_component_disable');
       expect(componentDisableTool.description).toContain('Disable OSGi components');
+    });
+
+    it('should have correct component details tool definition', () => {
+      expect(componentDetailsTool.name).toBe('aem_component_details');
+      expect(componentDetailsTool.description).toContain('Get detailed information');
+      expect(componentDetailsTool.inputSchema.properties).toHaveProperty('componentName');
+      expect(componentDetailsTool.inputSchema.properties).not.toHaveProperty('componentId');
+      expect(componentDetailsTool.inputSchema.required).toContain('componentName');
     });
 
   });
@@ -186,7 +197,7 @@ describe('Component Management Handlers', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Component list failed');
-      expect(result.content[0].text).toContain('No instances to check after resolution');
+      expect(result.content[0].text).toContain('Validation failed');
     });
 
     it('should handle executor failures gracefully', async () => {
@@ -228,31 +239,6 @@ describe('Component Management Handlers', () => {
   });
 
   describe('handleComponentEnable', () => {
-    it('should handle component enable with componentId', async () => {
-      const args = { 
-        instances: [testInstances[0]], 
-        componentId: 101
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: true,
-          data: mockComponentOperationResult,
-          duration: 300
-        }
-      ]);
-
-      const result = await handleComponentEnable(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.operation).toBe('enable');
-      expect(responseData.summary.successful).toBe(1);
-      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(true);
-    });
-
     it('should handle component enable with componentName', async () => {
       const args = { 
         instances: [testInstances[0]], 
@@ -282,7 +268,7 @@ describe('Component Management Handlers', () => {
     it('should handle component disable operation', async () => {
       const args = { 
         instances: [testInstances[0]], 
-        componentId: 101
+        componentName: 'com.example.test.component'
       };
       
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
@@ -304,11 +290,75 @@ describe('Component Management Handlers', () => {
     });
   });
 
+  describe('handleComponentDetails', () => {
+    it('should handle component details with componentName', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        componentName: 'com.example.test.component'
+      };
+      
+      const mockComponentDetails = {
+        id: 101,
+        name: 'Test Component Service',
+        state: 'active',
+        pid: 'com.example.test.component',
+        properties: {
+          'Bundle': 'com.example.bundle (123)',
+          'Service Type': 'singleton'
+        }
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockComponentDetails,
+          duration: 200
+        }
+      ]);
+
+      const result = await handleComponentDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('details');
+      expect(responseData.summary.successful).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(true);
+      expect(responseData.results['http://test-author.example.com:4502'].component).toEqual(mockComponentDetails);
+    });
+
+    it('should handle component details failures', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        componentName: 'nonexistent.component'
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: false,
+          error: 'Component not found',
+          duration: 100
+        }
+      ]);
+
+      const result = await handleComponentDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.summary.failed).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
+      expect(responseData.results['http://test-author.example.com:4502'].error).toBe('Component not found');
+    });
+  });
+
   describe('Component Operations - Common Tests', () => {
-    it('should handle validation errors for missing component identifier', async () => {
+    it('should handle validation errors for missing component name', async () => {
       const invalidArgs = { 
         instances: [testInstances[0]]
-        // Missing both componentId and componentName
+        // Missing componentName
       };
 
       const result = await handleComponentEnable(invalidArgs, mockResolver, mockExecutor, mockClient);
@@ -321,7 +371,7 @@ describe('Component Management Handlers', () => {
     it('should handle operation failures', async () => {
       const args = { 
         instances: [testInstances[0]], 
-        componentId: 999
+        componentName: 'nonexistent.component'
       };
       
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
@@ -376,6 +426,91 @@ describe('Component Management Handlers', () => {
       const responseData = JSON.parse(result.content[0].text!);
       expect(responseData.summary.failed).toBe(1);
       expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
+    });
+
+    it('should handle component details by exact name match (bug fix verification)', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        componentName: 'com.adobe.acs.commons.email.impl.EmailServiceImpl'
+      };
+      
+      const mockComponentDetails = {
+        id: 4075,
+        name: 'com.adobe.acs.commons.email.impl.EmailServiceImpl',
+        state: 'active',
+        pid: 'com.adobe.acs.commons.email.impl.EmailServiceImpl',
+        properties: {
+          'Bundle': 'com.adobe.acs.commons (638)'
+        }
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockComponentDetails,
+          duration: 200
+        }
+      ]);
+
+      const result = await handleComponentDetails(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('details');
+      expect(responseData.summary.successful).toBe(1);
+      expect(responseData.results['http://test-author.example.com:4502'].component.name).toBe('com.adobe.acs.commons.email.impl.EmailServiceImpl');
+      expect(responseData.results['http://test-author.example.com:4502'].component.id).toBe(4075);
+    });
+
+    it('should handle empty component name validation', async () => {
+      const invalidArgs = { 
+        instances: [testInstances[0]],
+        componentName: ''
+      };
+
+      const result = await handleComponentEnable(invalidArgs, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Component enable failed');
+      expect(result.content[0].text).toContain('Validation failed');
+    });
+
+    it('should handle whitespace-only component name validation', async () => {
+      const invalidArgs = { 
+        instances: [testInstances[0]],
+        componentName: '   '
+      };
+
+      const result = await handleComponentDisable(invalidArgs, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Component disable failed');
+      expect(result.content[0].text).toContain('Validation failed');
+    });
+
+    it('should handle component names with special characters', async () => {
+      const args = { 
+        instances: [testInstances[0]], 
+        componentName: 'com.example.component-with_special.chars@domain'
+      };
+      
+      mockExecutor.executeOnInstances.mockResolvedValueOnce([
+        {
+          instanceUrl: 'http://test-author.example.com:4502',
+          success: true,
+          data: mockComponentOperationResult,
+          duration: 300
+        }
+      ]);
+
+      const result = await handleComponentEnable(args, mockResolver, mockExecutor, mockClient);
+
+      expect(result.isError).toBe(false);
+      
+      const responseData = JSON.parse(result.content[0].text!);
+      expect(responseData.operation).toBe('enable');
+      expect(responseData.summary.successful).toBe(1);
     });
   });
 });

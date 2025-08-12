@@ -24,9 +24,11 @@ import {
   handleComponentList, 
   handleComponentEnable,
   handleComponentDisable,
+  handleComponentDetails,
   componentListTool,
   componentEnableTool,
-  componentDisableTool
+  componentDisableTool,
+  componentDetailsTool
 } from './component-management.js';
 import { 
   handleConfigurationList, 
@@ -65,6 +67,7 @@ export function registerHandlers(server: Server, configPath: string): void {
         componentListTool,
         componentEnableTool,
         componentDisableTool,
+        componentDetailsTool,
         configurationListTool,
         configurationGetTool,
         configurationCreateTool,
@@ -114,6 +117,9 @@ export function registerHandlers(server: Server, configPath: string): void {
           break;
         case 'aem_component_disable':
           result = await handleComponentDisable(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_component_details':
+          result = await handleComponentDetails(args, aliasResolver, parallelExecutor, httpClient);
           break;
         case 'aem_configuration_list':
           result = await handleConfigurationList(args, aliasResolver, parallelExecutor, httpClient);
