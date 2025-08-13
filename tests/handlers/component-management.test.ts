@@ -2,11 +2,9 @@ import {
   handleComponentList,
   handleComponentEnable,
   handleComponentDisable,
-  handleComponentBulkOperation,
   componentListTool,
   componentEnableTool,
-  componentDisableTool,
-  componentBulkOperationTool
+  componentDisableTool
 } from '@/handlers/component-management.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
@@ -14,8 +12,7 @@ import { AemHttpClient } from '@/services/http-client.js';
 import { 
   AEMInstance, 
   OSGiComponent,
-  ComponentOperationResult,
-  BulkOperationResult
+  ComponentOperationResult
 } from '@/types/index.js';
 
 jest.mock('@/services/alias-resolver.js');
@@ -72,14 +69,6 @@ describe('Component Management Handlers', () => {
     message: 'Component operation completed successfully'
   };
 
-  const mockBulkOperationResult: BulkOperationResult<ComponentOperationResult> = {
-    success: true,
-    results: [mockComponentOperationResult, mockComponentOperationResult],
-    message: 'Bulk operation completed: 2 successful, 0 failed',
-    totalCount: 2,
-    successCount: 2,
-    failureCount: 0
-  };
 
   beforeEach(() => {
     mockResolver = new AliasResolver('') as jest.Mocked<AliasResolver>;
@@ -111,12 +100,6 @@ describe('Component Management Handlers', () => {
       expect(componentDisableTool.description).toContain('Disable OSGi components');
     });
 
-    it('should have correct component bulk operation tool definition', () => {
-      expect(componentBulkOperationTool.name).toBe('aem_component_bulk_operation');
-      expect(componentBulkOperationTool.description).toContain('Perform bulk operations');
-      expect(componentBulkOperationTool.inputSchema.properties).toHaveProperty('componentIds');
-      expect(componentBulkOperationTool.inputSchema.properties).toHaveProperty('action');
-    });
   });
 
   describe('handleComponentList', () => {
@@ -360,153 +343,6 @@ describe('Component Management Handlers', () => {
     });
   });
 
-  describe('handleComponentBulkOperation', () => {
-    it('should handle bulk component operations successfully', async () => {
-      const args = { 
-        instances: [testInstances[0]], 
-        componentIds: [101, 102, 103],
-        action: 'enable'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: true,
-          data: mockBulkOperationResult,
-          duration: 1000
-        }
-      ]);
-
-      const result = await handleComponentBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.operation).toBe('enable');
-      expect(responseData.summary.successful).toBe(1);
-      expect(responseData.summary.successfulComponentOperations).toBe(2);
-      expect(responseData.summary.failedComponentOperations).toBe(0);
-    });
-
-    it('should handle bulk operations with componentNames', async () => {
-      const args = { 
-        instances: [testInstances[0]], 
-        componentNames: ['com.example.test.component', 'com.example.http.client.component'],
-        action: 'disable'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: true,
-          data: mockBulkOperationResult,
-          duration: 1000
-        }
-      ]);
-
-      const result = await handleComponentBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.operation).toBe('disable');
-      expect(responseData.summary.successful).toBe(1);
-    });
-
-    it('should handle validation errors for empty component list', async () => {
-      const invalidArgs = { 
-        instances: [testInstances[0]], 
-        componentIds: [],
-        action: 'enable'
-      };
-
-      const result = await handleComponentBulkOperation(invalidArgs, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Component bulk operation failed');
-      expect(result.content[0].text).toContain('Validation failed');
-    });
-
-    it('should handle validation errors for too many components', async () => {
-      const tooManyComponents = Array.from({ length: 60 }, (_, i) => i + 1);
-      const invalidArgs = { 
-        instances: [testInstances[0]], 
-        componentIds: tooManyComponents,
-        action: 'enable'
-      };
-
-      const result = await handleComponentBulkOperation(invalidArgs, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Component bulk operation failed');
-      expect(result.content[0].text).toContain('Maximum 50 components allowed');
-    });
-
-    it('should handle bulk operation failures', async () => {
-      const args = { 
-        instances: [testInstances[0]], 
-        componentIds: [101, 102],
-        action: 'disable'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: false,
-          error: 'Bulk operation failed',
-          duration: 2000
-        }
-      ]);
-
-      const result = await handleComponentBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary.failed).toBe(1);
-      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
-    });
-
-    it('should handle mixed success/failure results', async () => {
-      const args = { 
-        instances: testInstances, 
-        componentIds: [101, 102],
-        action: 'enable'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: true,
-          data: {
-            success: true,
-            results: [mockComponentOperationResult],
-            totalCount: 2,
-            successCount: 1,
-            failureCount: 1,
-            message: 'Partially successful'
-          },
-          duration: 1500
-        },
-        {
-          instanceUrl: 'http://test-publish.example.com:4503',
-          success: false,
-          error: 'Instance unreachable',
-          duration: 3000
-        }
-      ]);
-
-      const result = await handleComponentBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary.successful).toBe(1);
-      expect(responseData.summary.failed).toBe(1);
-      expect(responseData.summary.successfulComponentOperations).toBe(1);
-      expect(responseData.summary.failedComponentOperations).toBe(1);
-    });
-  });
 
   describe('Edge Cases', () => {
     it('should handle unexpected errors gracefully', async () => {

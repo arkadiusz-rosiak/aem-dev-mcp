@@ -3,13 +3,11 @@ import {
   handleBundleStart,
   handleBundleStop,
   handleBundleRefresh,
-  handleBundleBulkOperation,
   bundleListTool,
   bundleStartTool,
   bundleStopTool,
   bundleRefreshTool,
-  bundleUninstallTool,
-  bundleBulkOperationTool
+  bundleUninstallTool
 } from '@/handlers/bundle-management.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
@@ -17,8 +15,7 @@ import { AemHttpClient } from '@/services/http-client.js';
 import { 
   AEMInstance, 
   OSGiBundle,
-  BundleOperationResult,
-  BulkOperationResult
+  BundleOperationResult
 } from '@/types/index.js';
 
 jest.mock('@/services/alias-resolver.js');
@@ -75,14 +72,6 @@ describe('Bundle Management Handlers', () => {
     message: 'Bundle operation completed successfully'
   };
 
-  const mockBulkOperationResult: BulkOperationResult<BundleOperationResult> = {
-    success: true,
-    results: [mockBundleOperationResult, mockBundleOperationResult],
-    message: 'Bulk operation completed: 2 successful, 0 failed',
-    totalCount: 2,
-    successCount: 2,
-    failureCount: 0
-  };
 
   beforeEach(() => {
     mockResolver = new AliasResolver('') as jest.Mocked<AliasResolver>;
@@ -124,12 +113,6 @@ describe('Bundle Management Handlers', () => {
       expect(bundleUninstallTool.description).toContain('Uninstall OSGi bundles');
     });
 
-    it('should have correct bundle bulk operation tool definition', () => {
-      expect(bundleBulkOperationTool.name).toBe('aem_bundle_bulk_operation');
-      expect(bundleBulkOperationTool.description).toContain('Perform bulk operations');
-      expect(bundleBulkOperationTool.inputSchema.properties).toHaveProperty('bundleIds');
-      expect(bundleBulkOperationTool.inputSchema.properties).toHaveProperty('action');
-    });
   });
 
   describe('handleBundleList', () => {
@@ -373,128 +356,6 @@ describe('Bundle Management Handlers', () => {
     });
   });
 
-  describe('handleBundleBulkOperation', () => {
-    it('should handle bulk bundle operations successfully', async () => {
-      const args = { 
-        instances: [testInstances[0]], 
-        bundleIds: [123, 124, 125],
-        action: 'start'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: true,
-          data: mockBulkOperationResult,
-          duration: 1000
-        }
-      ]);
-
-      const result = await handleBundleBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.operation).toBe('start');
-      expect(responseData.summary.successful).toBe(1);
-      expect(responseData.summary.successfulBundleOperations).toBe(2);
-      expect(responseData.summary.failedBundleOperations).toBe(0);
-    });
-
-    it('should handle validation errors for empty bundle list', async () => {
-      const invalidArgs = { 
-        instances: [testInstances[0]], 
-        bundleIds: [],
-        action: 'start'
-      };
-
-      const result = await handleBundleBulkOperation(invalidArgs, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Bundle bulk operation failed');
-      expect(result.content[0].text).toContain('Validation failed');
-    });
-
-    it('should handle validation errors for too many bundles', async () => {
-      const tooManyBundles = Array.from({ length: 60 }, (_, i) => i + 1);
-      const invalidArgs = { 
-        instances: [testInstances[0]], 
-        bundleIds: tooManyBundles,
-        action: 'start'
-      };
-
-      const result = await handleBundleBulkOperation(invalidArgs, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Bundle bulk operation failed');
-      expect(result.content[0].text).toContain('Maximum 50 bundle IDs allowed');
-    });
-
-    it('should handle bulk operation failures', async () => {
-      const args = { 
-        instances: [testInstances[0]], 
-        bundleIds: [123, 124],
-        action: 'restart'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: false,
-          error: 'Bulk operation failed',
-          duration: 2000
-        }
-      ]);
-
-      const result = await handleBundleBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary.failed).toBe(1);
-      expect(responseData.results['http://test-author.example.com:4502'].success).toBe(false);
-    });
-
-    it('should handle mixed success/failure results', async () => {
-      const args = { 
-        instances: testInstances, 
-        bundleIds: [123, 124],
-        action: 'stop'
-      };
-      
-      mockExecutor.executeOnInstances.mockResolvedValueOnce([
-        {
-          instanceUrl: 'http://test-author.example.com:4502',
-          success: true,
-          data: {
-            success: true,
-            results: [mockBundleOperationResult],
-            totalCount: 2,
-            successCount: 1,
-            failureCount: 1,
-            message: 'Partially successful'
-          },
-          duration: 1500
-        },
-        {
-          instanceUrl: 'http://test-publish.example.com:4503',
-          success: false,
-          error: 'Instance unreachable',
-          duration: 3000
-        }
-      ]);
-
-      const result = await handleBundleBulkOperation(args, mockResolver, mockExecutor, mockClient);
-
-      expect(result.isError).toBe(false);
-      
-      const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.summary.successful).toBe(1);
-      expect(responseData.summary.failed).toBe(1);
-      expect(responseData.summary.successfulBundleOperations).toBe(1);
-      expect(responseData.summary.failedBundleOperations).toBe(1);
-    });
-  });
 
   describe('Edge Cases', () => {
     it('should handle unexpected errors gracefully', async () => {

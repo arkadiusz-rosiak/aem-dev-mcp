@@ -516,51 +516,12 @@ describe('BundleManagementService', () => {
     });
   });
 
-  describe('performBulkOperation', () => {
-    it('should perform bulk start operation successfully', async () => {
-      const bundleIds = [123, 124, 125];
-      
-      jest.spyOn(bundleService as any, 'makeAuthenticatedRequest')
-        .mockResolvedValue({
-          success: true,
-          data: {}
-        });
-
-      const mockListBundles = jest.spyOn(bundleService, 'listBundles')
-        .mockResolvedValue({
-          success: true,
-          data: bundleIds.map(id => ({
-            id,
-            name: `Bundle ${id}`,
-            symbolicName: `test.bundle.${id}`,
-            version: '1.0.0',
-            state: 'Active' as BundleState,
-            stateRaw: 32,
-            fragment: false,
-            imported: false,
-            category: 'test'
-          })),
-          duration: 100
-        });
-
-      const result = await bundleService.performBulkOperation(testInstance, bundleIds, 'start');
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.successCount).toBe(3);
-        expect(result.data.failureCount).toBe(0);
-      }
-      
-      mockListBundles.mockRestore();
-    });
-  });
 
   describe('custom configuration', () => {
     it('should use custom configuration when provided', () => {
       const customConfig = {
         timeout: createTimeout(30000),
         installTimeout: createTimeout(60000),
-        maxBulkOperations: 100,
         maxBundleSize: 200 * 1024 * 1024,
         actionDelayMs: 2000
       };

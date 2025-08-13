@@ -10,23 +10,19 @@ import {
   handleBundleStop,
   handleBundleRefresh,
   handleBundleUninstall,
-  handleBundleBulkOperation,
   bundleListTool,
   bundleStartTool,
   bundleStopTool,
   bundleRefreshTool,
-  bundleUninstallTool,
-  bundleBulkOperationTool
+  bundleUninstallTool
 } from './bundle-management.js';
 import { 
   handleComponentList, 
   handleComponentEnable,
   handleComponentDisable,
-  handleComponentBulkOperation,
   componentListTool,
   componentEnableTool,
-  componentDisableTool,
-  componentBulkOperationTool
+  componentDisableTool
 } from './component-management.js';
 import { 
   handleConfigurationList, 
@@ -60,11 +56,9 @@ export function registerHandlers(server: Server, configPath: string): void {
         bundleStopTool,
         bundleRefreshTool,
         bundleUninstallTool,
-        bundleBulkOperationTool,
         componentListTool,
         componentEnableTool,
         componentDisableTool,
-        componentBulkOperationTool,
         configurationListTool,
         configurationGetTool,
         configurationCreateTool,
@@ -100,9 +94,6 @@ export function registerHandlers(server: Server, configPath: string): void {
         case 'aem_bundle_uninstall':
           result = await handleBundleUninstall(args, aliasResolver, parallelExecutor, httpClient);
           break;
-        case 'aem_bundle_bulk_operation':
-          result = await handleBundleBulkOperation(args, aliasResolver, parallelExecutor, httpClient);
-          break;
         case 'aem_component_list':
           result = await handleComponentList(args, aliasResolver, parallelExecutor, httpClient);
           break;
@@ -111,9 +102,6 @@ export function registerHandlers(server: Server, configPath: string): void {
           break;
         case 'aem_component_disable':
           result = await handleComponentDisable(args, aliasResolver, parallelExecutor, httpClient);
-          break;
-        case 'aem_component_bulk_operation':
-          result = await handleComponentBulkOperation(args, aliasResolver, parallelExecutor, httpClient);
           break;
         case 'aem_configuration_list':
           result = await handleConfigurationList(args, aliasResolver, parallelExecutor, httpClient);

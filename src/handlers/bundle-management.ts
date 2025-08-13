@@ -22,11 +22,8 @@ import { z } from 'zod';
 import { 
   BundleListSchema, 
   BundleIdentifierSchema,
-  BundleBulkOperationSchema,
-  MAX_BULK_OPERATIONS,
   type BundleListInput,
-  type BundleIdentifierInput,
-  type BundleBulkOperationInput
+  type BundleIdentifierInput
 } from '@/schemas/osgi.schemas.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 
@@ -136,44 +133,6 @@ export const bundleUninstallTool = {
   inputSchema: baseBundleOperationSchema
 };
 
-export const bundleBulkOperationTool = {
-  name: 'aem_bundle_bulk_operation',
-  description: 'Perform bulk operations on multiple OSGi bundles',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      aliases: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Array of instance aliases'
-      },
-      instances: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            url: { type: 'string' },
-            username: { type: 'string' },
-            password: { type: 'string' }
-          },
-          required: ['url', 'username', 'password']
-        },
-        description: 'Array of AEM instances'
-      },
-      bundleIds: {
-        type: 'array',
-        items: { type: 'integer' },
-        description: `Array of bundle IDs (max ${MAX_BULK_OPERATIONS})`
-      },
-      action: {
-        type: 'string',
-        enum: ['start', 'stop', 'restart', 'uninstall', 'refresh'],
-        description: 'Action to perform on the bundles'
-      }
-    },
-    required: ['bundleIds', 'action']
-  }
-};
 
 export async function handleBundleList(
   args: unknown,
@@ -338,70 +297,9 @@ async function handleSpecificBundleOperation(
   }
 }
 
-export async function handleBundleBulkOperation(
-  args: unknown,
-  resolver: AliasResolver,
-  executor: ParallelExecutor,
-  client: AemHttpClient
-): Promise<MCPToolResult> {
-  const logger = createLogger();
-  const requestId = createRequestId(uuidv4());
-  
-  try {
-    const validatedInput = BundleBulkOperationSchema.parse(args);
-    const config = createBundleConfig();
-    
-    const bundleService = new BundleManagementService(client);
-    
-    const instances = await resolveInstances(validatedInput, resolver);
-    
-    if (!isNonEmptyArray(instances)) {
-      throw new Error('No instances to check after resolution');
-    }
-
-    const results = await executor.executeOnInstances(
-      instances,
-      async (instance: AEMInstance) => {
-        return await bundleService.performBulkOperation(
-          instance, 
-          validatedInput.bundleIds, 
-          validatedInput.action
-        );
-      },
-      {
-        maxConcurrency: config.maxConcurrency,
-        timeout: config.timeout
-      }
-    );
-    
-    const response = buildBundleBulkOperationResponse(requestId, results, instances, validatedInput.action);
-    
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify(response, null, 2)
-      }],
-      isError: false
-    };
-    
-  } catch (error) {
-    logger.error('Bundle bulk operation failed', { error, requestId });
-    
-    const errorMessage = error instanceof z.ZodError 
-      ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
-      : error instanceof Error 
-        ? error.message 
-        : String(error);
-    
-    return createErrorResponse(
-      `Bundle bulk operation failed: ${errorMessage}`,
-      requestId
-    );
-  }
-}
 
 async function resolveInstances(
-  input: BundleListInput | BundleIdentifierInput | BundleBulkOperationInput,
+  input: BundleListInput | BundleIdentifierInput,
   resolver: AliasResolver
 ): Promise<AEMInstance[]> {
   const instances: AEMInstance[] = [];
@@ -535,41 +433,3 @@ function buildBundleOperationResponse(requestId: RequestId, results: any[], inst
   return response;
 }
 
-function buildBundleBulkOperationResponse(requestId: RequestId, results: any[], instances: AEMInstance[], action: string) {
-  const response = {
-    requestId,
-    operation: action,
-    summary: {
-      total: instances.length,
-      successful: 0,
-      failed: 0,
-      totalBundleOperations: 0,
-      successfulBundleOperations: 0,
-      failedBundleOperations: 0
-    },
-    results: {} as Record<string, any>,
-    metadata: {
-      timestamp: new Date().toISOString(),
-      totalInstances: instances.length
-    }
-  };
-
-  results.forEach((result, index) => {
-    const instance = instances[index];
-    if (result.success) {
-      response.summary.successful++;
-      response.summary.totalBundleOperations += result.data.totalCount || 0;
-      response.summary.successfulBundleOperations += result.data.successCount || 0;
-      response.summary.failedBundleOperations += result.data.failureCount || 0;
-      response.results[instance.url] = result.data;
-    } else {
-      response.summary.failed++;
-      response.results[instance.url] = {
-        success: false,
-        error: result.error || 'Unknown error'
-      };
-    }
-  });
-
-  return response;
-}

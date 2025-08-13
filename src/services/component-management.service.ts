@@ -3,7 +3,6 @@ import {
   OperationResult,
   OSGiComponent,
   ComponentOperationResult,
-  BulkOperationResult,
   OSGiError,
   OSGI_ERROR_CODES,
   ComponentState,
@@ -13,13 +12,11 @@ import { AemHttpClient } from '@/services/http-client.js';
 import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 import { BaseOSGiService, BaseOSGiServiceConfig } from '@/utils/base-osgi-service.js';
-import { performBulkOperation, BulkOperationConfig } from '@/utils/bulk-operations.js';
 
-interface ComponentManagementConfig extends BaseOSGiServiceConfig, BulkOperationConfig {}
+interface ComponentManagementConfig extends BaseOSGiServiceConfig {}
 
 const DEFAULT_CONFIG: ComponentManagementConfig = {
   timeout: TIMEOUTS.DEFAULT,
-  maxBulkOperations: 50,
   actionDelayMs: 1000
 } as const;
 
@@ -131,21 +128,6 @@ export class ComponentManagementService extends BaseOSGiService {
     }
   }
 
-  async performBulkComponentOperation(
-    instance: AEMInstance,
-    componentIds: readonly number[],
-    action: 'enable' | 'disable'
-  ): Promise<OperationResult<BulkOperationResult<ComponentOperationResult>, OSGiError>> {
-    return performBulkOperation(
-      instance,
-      componentIds,
-      action,
-      (inst, componentId) => action === 'enable' 
-        ? this.enableComponent(inst, componentId)
-        : this.disableComponent(inst, componentId),
-      this.#config
-    );
-  }
 
   async findComponentsByName(instance: AEMInstance, componentNames: readonly string[]): Promise<OperationResult<OSGiComponent[], OSGiError>> {
     const listResult = await this.listComponents(instance);

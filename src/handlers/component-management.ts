@@ -2,7 +2,6 @@ import {
   MCPToolResult, 
   AEMInstance, 
   ComponentOperationResult,
-  BulkOperationResult,
   RequestId,
   TimeoutMs,
   ConcurrencyLimit,
@@ -23,11 +22,8 @@ import { z } from 'zod';
 import { 
   ComponentListSchema, 
   ComponentIdentifierSchema,
-  ComponentBulkOperationSchema,
-  MAX_BULK_OPERATIONS,
   type ComponentListInput,
-  type ComponentIdentifierInput,
-  type ComponentBulkOperationInput
+  type ComponentIdentifierInput
 } from '@/schemas/osgi.schemas.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 
@@ -125,49 +121,6 @@ export const componentDisableTool = {
   inputSchema: baseComponentOperationSchema
 };
 
-export const componentBulkOperationTool = {
-  name: 'aem_component_bulk_operation',
-  description: 'Perform bulk operations on multiple OSGi components',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      aliases: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Array of instance aliases'
-      },
-      instances: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            url: { type: 'string' },
-            username: { type: 'string' },
-            password: { type: 'string' }
-          },
-          required: ['url', 'username', 'password']
-        },
-        description: 'Array of AEM instances'
-      },
-      componentIds: {
-        type: 'array',
-        items: { type: 'integer' },
-        description: `Array of component IDs (max ${MAX_BULK_OPERATIONS})`
-      },
-      componentNames: {
-        type: 'array',
-        items: { type: 'string' },
-        description: `Array of component names (max ${MAX_BULK_OPERATIONS})`
-      },
-      action: {
-        type: 'string',
-        enum: ['enable', 'disable'],
-        description: 'Action to perform on the components'
-      }
-    },
-    required: ['action']
-  }
-};
 
 export async function handleComponentList(
   args: unknown,
@@ -314,81 +267,9 @@ async function handleSpecificComponentOperation(
   }
 }
 
-export async function handleComponentBulkOperation(
-  args: unknown,
-  resolver: AliasResolver,
-  executor: ParallelExecutor,
-  client: AemHttpClient
-): Promise<MCPToolResult> {
-  const logger = createLogger();
-  const requestId = createRequestId(uuidv4());
-  
-  try {
-    const validatedInput = ComponentBulkOperationSchema.parse(args);
-    const config = createComponentConfig();
-    
-    const componentService = new ComponentManagementService(client);
-    
-    const instances = await resolveInstances(validatedInput, resolver);
-    
-    if (!isNonEmptyArray(instances)) {
-      throw new Error('No instances to check after resolution');
-    }
-
-    const results = await executor.executeOnInstances(
-      instances,
-      async (instance: AEMInstance) => {
-        if (validatedInput.componentIds && validatedInput.componentIds.length > 0) {
-          return await componentService.performBulkComponentOperation(
-            instance, 
-            validatedInput.componentIds, 
-            validatedInput.action
-          );
-        } else if (validatedInput.componentNames && validatedInput.componentNames.length > 0) {
-          return await executeComponentBulkActionByName(
-            componentService, 
-            instance, 
-            validatedInput.componentNames, 
-            validatedInput.action
-          );
-        } else {
-          throw new Error('Either componentIds or componentNames must be provided');
-        }
-      },
-      {
-        maxConcurrency: config.maxConcurrency,
-        timeout: config.timeout
-      }
-    );
-    
-    const response = buildComponentBulkOperationResponse(requestId, results, instances, validatedInput.action);
-    
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify(response, null, 2)
-      }],
-      isError: false
-    };
-    
-  } catch (error) {
-    logger.error('Component bulk operation failed', { error, requestId });
-    
-    const errorMessage = error instanceof z.ZodError 
-      ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
-      : error instanceof Error 
-        ? error.message 
-        : String(error);
-    
-    return createErrorResponse(
-      `Component bulk operation failed: ${errorMessage}`,
-      requestId
-    );
-  }
-}
 
 async function resolveInstances(
-  input: ComponentListInput | ComponentIdentifierInput | ComponentBulkOperationInput,
+  input: ComponentListInput | ComponentIdentifierInput,
   resolver: AliasResolver
 ): Promise<AEMInstance[]> {
   const instances: AEMInstance[] = [];
@@ -447,63 +328,6 @@ async function executeComponentActionByName(
   return await executeComponentAction(service, instance, component.id, action);
 }
 
-async function executeComponentBulkActionByName(
-  service: ComponentManagementService,
-  instance: AEMInstance,
-  componentNames: string[],
-  action: 'enable' | 'disable'
-): Promise<BulkOperationResult<ComponentOperationResult>> {
-  // First find all components by names
-  const listResult = await service.listComponents(instance);
-  if (!listResult.success) {
-    return {
-      success: false,
-      results: [],
-      message: `Failed to list components: ${listResult.error.message}`,
-      totalCount: componentNames.length,
-      successCount: 0,
-      failureCount: componentNames.length
-    };
-  }
-  
-  const componentIds: number[] = [];
-  const notFound: string[] = [];
-  
-  for (const name of componentNames) {
-    const component = listResult.data.find(c => c.name === name || c.pid === name);
-    if (component) {
-      componentIds.push(component.id);
-    } else {
-      notFound.push(name);
-    }
-  }
-  
-  if (componentIds.length === 0) {
-    return {
-      success: false,
-      results: [],
-      message: `No components found: ${notFound.join(', ')}`,
-      totalCount: componentNames.length,
-      successCount: 0,
-      failureCount: componentNames.length
-    };
-  }
-  
-  const bulkResult = await service.performBulkComponentOperation(instance, componentIds, action);
-  
-  if (bulkResult.success) {
-    return bulkResult.data;
-  } else {
-    return {
-      success: false,
-      results: [],
-      message: bulkResult.error.message,
-      totalCount: componentNames.length,
-      successCount: 0,
-      failureCount: componentNames.length
-    };
-  }
-}
 
 function buildComponentListResponse(requestId: RequestId, results: any[], instances: AEMInstance[]) {
   const response = {
@@ -574,41 +398,3 @@ function buildComponentOperationResponse(requestId: RequestId, results: any[], i
   return response;
 }
 
-function buildComponentBulkOperationResponse(requestId: RequestId, results: any[], instances: AEMInstance[], action: string) {
-  const response = {
-    requestId,
-    operation: action,
-    summary: {
-      total: instances.length,
-      successful: 0,
-      failed: 0,
-      totalComponentOperations: 0,
-      successfulComponentOperations: 0,
-      failedComponentOperations: 0
-    },
-    results: {} as Record<string, any>,
-    metadata: {
-      timestamp: new Date().toISOString(),
-      totalInstances: instances.length
-    }
-  };
-
-  results.forEach((result, index) => {
-    const instance = instances[index];
-    if (result.success) {
-      response.summary.successful++;
-      response.summary.totalComponentOperations += result.data.totalCount || 0;
-      response.summary.successfulComponentOperations += result.data.successCount || 0;
-      response.summary.failedComponentOperations += result.data.failureCount || 0;
-      response.results[instance.url] = result.data;
-    } else {
-      response.summary.failed++;
-      response.results[instance.url] = {
-        success: false,
-        error: result.error || 'Unknown error'
-      };
-    }
-  });
-
-  return response;
-}

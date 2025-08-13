@@ -139,14 +139,6 @@ export interface ConfigurationOperationResult {
   readonly error?: OSGiError;
 }
 
-export interface BulkOperationResult<T> {
-  readonly success: boolean;
-  readonly results: readonly T[];
-  readonly message: string;
-  readonly totalCount: number;
-  readonly successCount: number;
-  readonly failureCount: number;
-}
 
 export const isBundleState = (value: string): value is BundleState => {
   return ['Active', 'Resolved', 'Installed', 'Starting', 'Stopping', 'Uninstalled', 'Fragment'].includes(value);

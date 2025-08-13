@@ -3,7 +3,6 @@ import {
   OperationResult,
   OSGiBundle,
   BundleOperationResult,
-  BulkOperationResult,
   BundleInstallRequest,
   OSGiError,
   OSGI_ERROR_CODES,
@@ -15,9 +14,8 @@ import { AemHttpClient } from '@/services/http-client.js';
 import { createOSGiSuccessResult, createOSGiFailureResult } from '@/utils/operation-result.js';
 import { TIMEOUTS } from '@/constants/timeouts.js';
 import { BaseOSGiService, BaseOSGiServiceConfig } from '@/utils/base-osgi-service.js';
-import { performBulkOperation, BulkOperationConfig } from '@/utils/bulk-operations.js';
 
-interface BundleManagementConfig extends BaseOSGiServiceConfig, BulkOperationConfig {
+interface BundleManagementConfig extends BaseOSGiServiceConfig {
   readonly installTimeout: TimeoutMs;
   readonly maxBundleSize: number;
   readonly installDelayMs: number;
@@ -27,7 +25,6 @@ interface BundleManagementConfig extends BaseOSGiServiceConfig, BulkOperationCon
 const DEFAULT_CONFIG: BundleManagementConfig = {
   timeout: TIMEOUTS.DEFAULT,
   installTimeout: TIMEOUTS.BUNDLE_INSTALL ?? TIMEOUTS.DEFAULT * 3,
-  maxBulkOperations: 50,
   maxBundleSize: 100 * 1024 * 1024,
   actionDelayMs: 1000,
   installDelayMs: 2000,
@@ -235,38 +232,6 @@ export class BundleManagementService extends BaseOSGiService {
     }
   }
 
-  async performBulkOperation(
-    instance: AEMInstance,
-    bundleIds: readonly number[],
-    action: 'start' | 'stop' | 'restart' | 'uninstall' | 'refresh'
-  ): Promise<OperationResult<BulkOperationResult<BundleOperationResult>, OSGiError>> {
-    return performBulkOperation(
-      instance,
-      bundleIds,
-      action,
-      (inst, bundleId) => this.#executeBundleOperation(inst, bundleId, action),
-      this.#config
-    );
-  }
-
-  async #executeBundleOperation(
-    instance: AEMInstance,
-    bundleId: number,
-    action: 'start' | 'stop' | 'restart' | 'uninstall' | 'refresh'
-  ): Promise<OperationResult<BundleOperationResult, OSGiError>> {
-    switch (action) {
-      case 'start':
-        return this.startBundle(instance, bundleId);
-      case 'stop':
-        return this.stopBundle(instance, bundleId);
-      case 'restart':
-        return this.restartBundle(instance, bundleId);
-      case 'uninstall':
-        return this.uninstallBundle(instance, bundleId);
-      case 'refresh':
-        return this.refreshBundle(instance, bundleId);
-    }
-  }
 
   async #performBundleAction(
     instance: AEMInstance,

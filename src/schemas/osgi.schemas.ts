@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-export const MAX_BULK_OPERATIONS = 50;
 
 export const BundleStateSchema = z.enum([
   'Active',
@@ -97,12 +96,6 @@ export const BundleInstallSchema = InstanceSelectionSchema.extend({
   }
 );
 
-export const BundleBulkOperationSchema = InstanceSelectionSchema.extend({
-  bundleIds: z.array(z.number().int().positive('Bundle ID must be positive'))
-    .min(1, 'At least one bundle ID must be provided')
-    .max(MAX_BULK_OPERATIONS, `Maximum ${MAX_BULK_OPERATIONS} bundle IDs allowed`),
-  action: z.enum(['start', 'stop', 'restart', 'uninstall', 'refresh'])
-});
 
 export const ComponentListSchema = InstanceSelectionSchema.extend({
   stateFilter: ComponentStateSchema.optional(),
@@ -132,27 +125,6 @@ export const ComponentIdentifierSchema = InstanceSelectionSchema.extend({
   }
 );
 
-export const ComponentBulkOperationSchema = InstanceSelectionSchema.extend({
-  componentIds: z.array(z.number().int().positive('Component ID must be positive')).optional(),
-  componentNames: z.array(z.string().min(1, 'Component name cannot be empty')).optional(),
-  action: z.enum(['enable', 'disable'])
-}).refine(
-  (data) => (data.componentIds && data.componentIds.length > 0) || 
-           (data.componentNames && data.componentNames.length > 0),
-  {
-    message: "Either 'componentIds' or 'componentNames' must be provided and non-empty",
-    path: ['componentIds', 'componentNames']
-  }
-).refine(
-  (data) => {
-    const totalComponents = (data.componentIds?.length ?? 0) + (data.componentNames?.length ?? 0);
-    return totalComponents <= MAX_BULK_OPERATIONS;
-  },
-  {
-    message: `Maximum ${MAX_BULK_OPERATIONS} components allowed`,
-    path: ['componentIds', 'componentNames']
-  }
-);
 
 export const ConfigurationListSchema = InstanceSelectionSchema.extend({
   pidFilter: z.string().optional()
@@ -195,11 +167,9 @@ export type BundleListInput = z.infer<typeof BundleListSchema>;
 export type BundleOperationInput = z.infer<typeof BundleOperationSchema>;
 export type BundleIdentifierInput = z.infer<typeof BundleIdentifierSchema>;
 export type BundleInstallInput = z.infer<typeof BundleInstallSchema>;
-export type BundleBulkOperationInput = z.infer<typeof BundleBulkOperationSchema>;
 export type ComponentListInput = z.infer<typeof ComponentListSchema>;
 export type ComponentOperationInput = z.infer<typeof ComponentOperationSchema>;
 export type ComponentIdentifierInput = z.infer<typeof ComponentIdentifierSchema>;
-export type ComponentBulkOperationInput = z.infer<typeof ComponentBulkOperationSchema>;
 export type ConfigurationListInput = z.infer<typeof ConfigurationListSchema>;
 export type ConfigurationGetInput = z.infer<typeof ConfigurationGetSchema>;
 export type ConfigurationCreateInput = z.infer<typeof ConfigurationCreateSchema>;
