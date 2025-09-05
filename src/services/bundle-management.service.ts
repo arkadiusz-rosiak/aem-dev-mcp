@@ -120,30 +120,10 @@ export class BundleManagementService extends BaseOSGiService {
         // Parse detailed information from the response
         bundleDetails = this.#parseBundleDetails((bundleInfoResult.data as any).data[0]);
       } else {
-        // Fallback to basic bundle info from list
-        const basicBundleResult = await this.#getBundleById(instance, targetBundleId);
-        if (!basicBundleResult.success) {
-          return createOSGiFailureResult(
-            this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${targetBundleId} not found`),
-            Date.now() - startTime
-          );
-        }
-        
-        bundleDetails = {
-          ...basicBundleResult.data,
-          description: undefined,
-          vendor: undefined,
-          location: undefined,
-          lastModified: undefined,
-          stateHistory: undefined,
-          exportedPackages: undefined,
-          importedPackages: undefined,
-          requiredBundles: undefined,
-          providedServices: undefined,
-          usedServices: undefined,
-          bundleHeaders: undefined,
-          startLevel: undefined
-        };
+        return createOSGiFailureResult(
+          this.createError(OSGI_ERROR_CODES.BUNDLE_NOT_FOUND, `Bundle ${targetBundleId} not found or could not retrieve details`),
+          Date.now() - startTime
+        );
       }
       
       const result: BundleDetailsResult = {
@@ -425,27 +405,39 @@ export class BundleManagementService extends BaseOSGiService {
     return bundles.slice(offset, offset + limit);
   }
 
-  #parseManifestHeaders(headersData: any): Record<string, string> {
-    if (Array.isArray(headersData)) {
-      const headers: Record<string, string> = {};
-      for (const header of headersData) {
-        if (typeof header === 'string' && header.includes(': ')) {
-          const [key, ...valueParts] = header.split(': ');
-          headers[key] = valueParts.join(': ');
-        }
-      }
-      return headers;
-    }
-    return {};
-  }
 
   #parsePackagesFromProps(packagesData: any): any[] | undefined {
     if (Array.isArray(packagesData)) {
-      return packagesData.map(pkg => ({
-        name: typeof pkg === 'string' ? pkg.split(',')[0] : pkg,
-        version: '0.0.0', // Version parsing would require more complex logic
-        used: false
-      }));
+      return packagesData.map(pkg => {
+        if (typeof pkg === 'string') {
+          // Parse package string like: "de.ergo.aem.base.filters,version=1.391.5"
+          // or: "com.adobe.acs.commons.util,version=3.6.0 from <a href='/system/console/bundles/638'>..."
+          const parts = pkg.split(',');
+          const name = parts[0];
+          let version = '0.0.0';
+          
+          // Extract version if present
+          const versionPart = parts.find(part => part.includes('version='));
+          if (versionPart) {
+            const versionMatch = versionPart.match(/version=([^\s]+)/);
+            if (versionMatch) {
+              version = versionMatch[1];
+            }
+          }
+          
+          // Clean up package name - remove HTML links and extra info
+          const cleanName = name.replace(/ from <a.*$/g, '').trim();
+          
+          return {
+            name: cleanName,
+            version: version
+          };
+        }
+        return {
+          name: pkg,
+          version: '0.0.0'
+        };
+      });
     }
     return undefined;
   }
@@ -522,7 +514,6 @@ export class BundleManagementService extends BaseOSGiService {
       vendor: propsMap['Vendor'] || bundleData.vendor,
       location: propsMap['Bundle Location'] || bundleData.location || bundleData.bundleLocation,
       lastModified: propsMap['Last Modification'] ? new Date(propsMap['Last Modification']).getTime() : undefined,
-      bundleHeaders: propsMap['Manifest Headers'] ? this.#parseManifestHeaders(propsMap['Manifest Headers']) : undefined,
       startLevel: propsMap['Start Level'] || bundleData.startLevel || bundleData.bundleStartLevel,
       
       // Parse packages from props

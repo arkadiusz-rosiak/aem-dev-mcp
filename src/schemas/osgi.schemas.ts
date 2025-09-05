@@ -142,7 +142,9 @@ export const ComponentIdentifierSchema = InstanceSelectionSchema.extend({
 
 
 export const ConfigurationListSchema = InstanceSelectionSchema.extend({
-  pidFilter: z.string().optional()
+  pidFilter: z.string().optional(),
+  limit: z.number().int().min(1).max(1000).optional().default(100),
+  offset: z.number().int().min(0).optional().default(0)
 });
 
 export const ConfigurationGetSchema = InstanceSelectionSchema.extend({

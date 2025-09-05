@@ -34,7 +34,7 @@ export class ConfigurationManagementService extends BaseOSGiService {
     this.#config = fullConfig;
   }
 
-  async listConfigurations(instance: AEMInstance, pidFilter?: string): Promise<OperationResult<OSGiConfiguration[], OSGiError>> {
+  async listConfigurations(instance: AEMInstance, pidFilter?: string, limit?: number, offset?: number): Promise<OperationResult<OSGiConfiguration[], OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -62,8 +62,9 @@ export class ConfigurationManagementService extends BaseOSGiService {
 
       const configurations = this.#parseConfigurations(configData);
       const filteredConfigurations = this.#filterConfigurations(configurations, pidFilter);
+      const paginatedConfigurations = this.#paginateConfigurations(filteredConfigurations, limit, offset);
 
-      return createOSGiSuccessResult(filteredConfigurations, Date.now() - startTime);
+      return createOSGiSuccessResult(paginatedConfigurations, Date.now() - startTime);
     } catch (error) {
       return createOSGiFailureResult(
         this.classifyError(error),
@@ -427,6 +428,17 @@ export class ConfigurationManagementService extends BaseOSGiService {
       config.pid.toLowerCase().includes(filter) ||
       (config.title && config.title.toLowerCase().includes(filter))
     );
+  }
+
+  #paginateConfigurations(configurations: OSGiConfiguration[], limit?: number, offset?: number): OSGiConfiguration[] {
+    if (!limit && !offset) {
+      return configurations;
+    }
+
+    const startIndex = offset || 0;
+    const endIndex = limit ? startIndex + limit : configurations.length;
+
+    return configurations.slice(startIndex, endIndex);
   }
 
   #validateConfigurationRequest(request: Omit<ConfigurationRequest, 'instanceAlias'>): { valid: boolean; error?: string } {

@@ -662,16 +662,8 @@ function buildBundleDetailsResponse(requestId: RequestId, results: any[], instan
       response.summary.successful++;
       response.results[instance.url] = {
         success: true,
-        bundleDetails: result.data.bundleDetails,
-        message: result.data.message || 'Bundle details retrieved successfully'
-      };
-    } else if (result.success) {
-      // Service succeeded but no data - this indicates a problem
-      response.summary.successful++;
-      response.results[instance.url] = {
-        success: true,
-        bundleDetails: undefined,
-        message: 'Bundle details request succeeded but no data returned'
+        bundleDetails: result.data.data.bundleDetails,
+        message: result.data.data.message || 'Bundle details retrieved successfully'
       };
     } else {
       response.summary.failed++;

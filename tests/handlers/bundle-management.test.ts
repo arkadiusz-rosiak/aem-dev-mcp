@@ -94,11 +94,11 @@ describe('Bundle Management Handlers', () => {
     lastModified: 1640995200000,
     startLevel: 20,
     exportedPackages: [
-      { name: 'com.test.api', version: '1.0.0', used: true },
-      { name: 'com.test.util', version: '1.0.0', used: false }
+      { name: 'com.test.api', version: '1.0.0' },
+      { name: 'com.test.util', version: '1.0.0' }
     ],
     importedPackages: [
-      { name: 'org.slf4j', version: '1.7.0', optional: false, resolved: true, exportingBundle: 45 }
+      { name: 'org.slf4j', version: '1.7.0' }
     ],
     requiredBundles: [
       { symbolicName: 'org.slf4j.api', version: '1.7.0', optional: false, resolved: true }
@@ -108,11 +108,7 @@ describe('Bundle Management Handlers', () => {
     ],
     usedServices: [
       { id: 123, interfaces: ['org.slf4j.LoggerFactory'], providingBundle: 45 }
-    ],
-    bundleHeaders: {
-      'Bundle-Description': 'A test bundle with detailed information',
-      'Bundle-Vendor': 'Test Vendor'
-    }
+    ]
   };
 
   const mockBundleDetailsResult: BundleDetailsResult = {
@@ -695,7 +691,6 @@ describe('Bundle Management Handlers', () => {
       expect(bundleDetails.importedPackages).toHaveLength(1);
       expect(bundleDetails.providedServices).toHaveLength(1);
       expect(bundleDetails.usedServices).toHaveLength(1);
-      expect(bundleDetails.bundleHeaders).toBeDefined();
       expect(bundleDetails.startLevel).toBe(20);
     });
   });

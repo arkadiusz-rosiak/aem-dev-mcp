@@ -74,6 +74,19 @@ export const configurationListTool = {
       pidFilter: {
         type: 'string',
         description: 'Filter configurations by PID'
+      },
+      limit: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 1000,
+        default: 100,
+        description: 'Maximum number of configurations to return per instance'
+      },
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        default: 0,
+        description: 'Number of configurations to skip for pagination'
       }
     }
   }
@@ -298,7 +311,9 @@ export async function handleConfigurationList(
       async (instance: AEMInstance) => {
         return await configService.listConfigurations(
           instance,
-          validatedInput.pidFilter
+          validatedInput.pidFilter,
+          validatedInput.limit ?? 100,
+          validatedInput.offset ?? 0
         );
       },
       {

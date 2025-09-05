@@ -70,14 +70,10 @@ export interface OSGiBundleDetails extends OSGiBundle {
   readonly exportedPackages?: {
     readonly name: string;
     readonly version: string;
-    readonly used: boolean;
   }[];
   readonly importedPackages?: {
     readonly name: string;
     readonly version: string;
-    readonly optional: boolean;
-    readonly resolved: boolean;
-    readonly exportingBundle?: number;
   }[];
   readonly requiredBundles?: {
     readonly symbolicName: string;
@@ -95,7 +91,6 @@ export interface OSGiBundleDetails extends OSGiBundle {
     readonly interfaces: string[];
     readonly providingBundle: number;
   }[];
-  readonly bundleHeaders?: Record<string, string>;
   readonly startLevel?: number;
 }
 
