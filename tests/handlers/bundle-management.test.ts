@@ -198,7 +198,7 @@ describe('Bundle Management Handlers', () => {
       expect(responseData.summary.total).toBe(1);
       expect(responseData.summary.successful).toBe(1);
       expect(Object.keys(responseData.results)).toContain('http://test-author.example.com:4502');
-      expect(responseData.results['http://test-author.example.com:4502'].bundles).toHaveLength(2);
+      expect(responseData.results['http://test-author.example.com:4502'].bundles.data).toHaveLength(2);
     });
 
     it('should handle aliases parameter correctly', async () => {
@@ -249,8 +249,8 @@ describe('Bundle Management Handlers', () => {
       expect(result.isError).toBe(false);
       
       const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.results['http://test-author.example.com:4502'].bundles).toHaveLength(1);
-      expect(responseData.results['http://test-author.example.com:4502'].bundles[0].category).toBe('system');
+      expect(responseData.results['http://test-author.example.com:4502'].bundles.data).toHaveLength(1);
+      expect(responseData.results['http://test-author.example.com:4502'].bundles.data[0].category).toBe('system');
     });
 
     it('should handle validation errors correctly', async () => {
@@ -518,13 +518,18 @@ describe('Bundle Management Handlers', () => {
         {
           instanceUrl: 'http://test-author.example.com:4502',
           success: true,
-          data: mockBundleDetailsResult,
+          data: {
+            data: mockBundleDetailsResult
+          },
           duration: 400
         }
       ]);
 
       const result = await handleBundleDetails(args, mockResolver, mockExecutor, mockClient);
 
+      if (result.isError) {
+        console.log('Error result:', result.content[0].text);
+      }
       expect(result.isError).toBe(false);
       
       const responseData = JSON.parse(result.content[0].text!);
@@ -546,7 +551,9 @@ describe('Bundle Management Handlers', () => {
         {
           instanceUrl: 'http://test-author.example.com:4502',
           success: true,
-          data: mockBundleDetailsResult,
+          data: {
+            data: mockBundleDetailsResult
+          },
           duration: 400
         }
       ]);
@@ -608,13 +615,17 @@ describe('Bundle Management Handlers', () => {
         {
           instanceUrl: 'http://test-author.example.com:4502',
           success: true,
-          data: mockBundleDetailsResult,
+          data: {
+            data: mockBundleDetailsResult
+          },
           duration: 400
         },
         {
           instanceUrl: 'http://test-publish.example.com:4503',
           success: true,
-          data: mockBundleDetailsResult,
+          data: {
+            data: mockBundleDetailsResult
+          },
           duration: 450
         }
       ]);
@@ -640,7 +651,9 @@ describe('Bundle Management Handlers', () => {
         {
           instanceUrl: 'http://test-author.example.com:4502',
           success: true,
-          data: mockBundleDetailsResult,
+          data: {
+            data: mockBundleDetailsResult
+          },
           duration: 400
         },
         {
@@ -673,7 +686,9 @@ describe('Bundle Management Handlers', () => {
         {
           instanceUrl: 'http://test-author.example.com:4502',
           success: true,
-          data: mockBundleDetailsResult,
+          data: {
+            data: mockBundleDetailsResult
+          },
           duration: 400
         }
       ]);

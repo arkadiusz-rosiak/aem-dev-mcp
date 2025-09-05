@@ -105,7 +105,7 @@ describe('ConfigurationManagementService', () => {
     it('should list all configurations successfully', async () => {
       jest.spyOn(configService as any, 'makeAuthenticatedRequest').mockResolvedValue({
         success: true,
-        data: mockConfigResponse
+        data: mockConfigResponse.configurations
       });
 
       const result = await configService.listConfigurations(testInstance);
@@ -146,7 +146,7 @@ describe('ConfigurationManagementService', () => {
       }
       expect(configService['makeAuthenticatedRequest']).toHaveBeenCalledWith(
         testInstance,
-        '/system/console/configMgr.json',
+        '/system/console/configMgr/*.json',
         'GET',
         undefined,
         expect.any(Number),
@@ -158,7 +158,7 @@ describe('ConfigurationManagementService', () => {
     it('should filter configurations by PID', async () => {
       jest.spyOn(configService as any, 'makeAuthenticatedRequest').mockResolvedValue({
         success: true,
-        data: mockConfigResponse
+        data: mockConfigResponse.configurations
       });
 
       const result = await configService.listConfigurations(testInstance, 'servlet');
@@ -173,7 +173,7 @@ describe('ConfigurationManagementService', () => {
     it('should filter configurations by title', async () => {
       jest.spyOn(configService as any, 'makeAuthenticatedRequest').mockResolvedValue({
         success: true,
-        data: mockConfigResponse
+        data: mockConfigResponse.configurations
       });
 
       const result = await configService.listConfigurations(testInstance, 'search');
@@ -857,17 +857,15 @@ describe('ConfigurationManagementService', () => {
     it('should handle malformed configuration data gracefully', async () => {
       jest.spyOn(configService as any, 'makeAuthenticatedRequest').mockResolvedValue({
         success: true,
-        data: {
-          configurations: [
-            { pid: 'valid.config', title: 'Valid Config' },
-            { title: 'Missing PID Config' },
-            null,
-            undefined,
-            'not-an-object',
-            { pid: null, title: 'Null PID Config' },
-            { pid: 'another.valid.config', title: 'Another Valid Config' }
-          ]
-        }
+        data: [
+          { pid: 'valid.config', title: 'Valid Config' },
+          { title: 'Missing PID Config' },
+          null,
+          undefined,
+          'not-an-object',
+          { pid: null, title: 'Null PID Config' },
+          { pid: 'another.valid.config', title: 'Another Valid Config' }
+        ]
       });
 
       const result = await configService.listConfigurations(testInstance);
