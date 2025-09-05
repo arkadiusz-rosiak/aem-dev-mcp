@@ -41,7 +41,9 @@ const ComponentListSchema = z.object({
     password: z.string()
   })).optional(),
   stateFilter: z.enum(['active', 'satisfied', 'unsatisfied', 'disabled']).optional(),
-  nameFilter: z.string().optional()
+  nameFilter: z.string().optional(),
+  limit: z.number().int().min(1).max(1000).default(100).optional(),
+  offset: z.number().int().min(0).default(0).optional()
 }).refine(data => data.aliases || data.instances, {
   message: "Either aliases or instances must be provided"
 });
@@ -90,6 +92,19 @@ export const componentListTool = {
       nameFilter: {
         type: 'string',
         description: 'Filter components by name or PID'
+      },
+      limit: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 1000,
+        default: 100,
+        description: 'Maximum number of components to return per instance'
+      },
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        default: 0,
+        description: 'Number of components to skip for pagination'
       }
     }
   }
@@ -221,7 +236,9 @@ export async function handleComponentList(
         return await componentService.listComponents(
           instance,
           validatedInput.stateFilter,
-          validatedInput.nameFilter
+          validatedInput.nameFilter,
+          validatedInput.limit ?? 100,
+          validatedInput.offset ?? 0
         );
       },
       {

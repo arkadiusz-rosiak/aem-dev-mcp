@@ -32,7 +32,7 @@ export class ComponentManagementService extends BaseOSGiService {
     this.#config = fullConfig;
   }
 
-  async listComponents(instance: AEMInstance, stateFilter?: ComponentState, nameFilter?: string): Promise<OperationResult<OSGiComponent[], OSGiError>> {
+  async listComponents(instance: AEMInstance, stateFilter?: ComponentState, nameFilter?: string, limit: number = 100, offset: number = 0): Promise<OperationResult<OSGiComponent[], OSGiError>> {
     const startTime = Date.now();
     
     try {
@@ -60,8 +60,9 @@ export class ComponentManagementService extends BaseOSGiService {
 
       const components = this.#parseComponents(componentData.data);
       const filteredComponents = this.#filterComponents(components, stateFilter, nameFilter);
+      const paginatedComponents = this.#applyPagination(filteredComponents, limit, offset);
 
-      return createOSGiSuccessResult(filteredComponents, Date.now() - startTime);
+      return createOSGiSuccessResult(paginatedComponents, Date.now() - startTime);
     } catch (error) {
       return createOSGiFailureResult(
         this.classifyError(error),
@@ -254,5 +255,9 @@ export class ComponentManagementService extends BaseOSGiService {
     }
 
     return this.filterByName(filtered, nameFilter);
+  }
+
+  #applyPagination(components: OSGiComponent[], limit: number, offset: number): OSGiComponent[] {
+    return components.slice(offset, offset + limit);
   }
 }

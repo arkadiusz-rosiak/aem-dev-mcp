@@ -23,9 +23,7 @@ const DEFAULT_CONFIG: ConfigurationManagementConfig = {
   actionDelayMs: 1000
 } as const;
 
-interface ConfigListResponse {
-  readonly configurations?: readonly unknown[];
-}
+type ConfigListResponse = readonly unknown[];
 
 export class ConfigurationManagementService extends BaseOSGiService {
   readonly #config: ConfigurationManagementConfig;
@@ -42,7 +40,7 @@ export class ConfigurationManagementService extends BaseOSGiService {
     try {
       const response = await this.makeAuthenticatedRequest<ConfigListResponse>(
         instance,
-        '/system/console/configMgr.json',
+        '/system/console/configMgr/*.json',
         'GET',
         undefined,
         this.#config.timeout,
@@ -55,14 +53,14 @@ export class ConfigurationManagementService extends BaseOSGiService {
       }
 
       const configData = response.data;
-      if (!configData.configurations) {
+      if (!Array.isArray(configData)) {
         return createOSGiFailureResult(
           this.createError(OSGI_ERROR_CODES.OPERATION_FAILED, 'Invalid configuration data received'),
           Date.now() - startTime
         );
       }
 
-      const configurations = this.#parseConfigurations(configData.configurations);
+      const configurations = this.#parseConfigurations(configData);
       const filteredConfigurations = this.#filterConfigurations(configurations, pidFilter);
 
       return createOSGiSuccessResult(filteredConfigurations, Date.now() - startTime);
@@ -374,11 +372,17 @@ export class ConfigurationManagementService extends BaseOSGiService {
     if (typedItem.properties && typeof typedItem.properties === 'object') {
       for (const [key, propData] of Object.entries(typedItem.properties)) {
         if (this.#isValidPropertyData(propData)) {
-          const typedProp = propData as { value: unknown; type?: string; cardinality?: number; description?: string };
+          const typedProp = propData as { 
+            name?: string;
+            value: unknown; 
+            type?: string | number; 
+            cardinality?: number; 
+            description?: string 
+          };
           properties[key] = {
-            name: key,
+            name: typedProp.name || key,
             value: typedProp.value,
-            type: (typedProp.type && isConfigPropertyType(typedProp.type)) ? typedProp.type : 'String',
+            type: this.#mapPropertyType(typedProp.type),
             cardinality: typedProp.cardinality,
             description: typedProp.description
           };
@@ -516,6 +520,32 @@ export class ConfigurationManagementService extends BaseOSGiService {
       default:
         return String(property.value);
     }
+  }
+
+  #mapPropertyType(type: string | number | undefined): ConfigProperty['type'] {
+    // Map numeric types from AEM console to string types
+    if (typeof type === 'number') {
+      switch (type) {
+        case 1: return 'String';
+        case 2: return 'Long';
+        case 3: return 'Integer';
+        case 4: return 'Short';
+        case 5: return 'Character';
+        case 6: return 'Double';
+        case 7: return 'Float';
+        case 11: return 'Boolean';
+        case 12: return 'String'; // Password type, treat as String
+        default: return 'String';
+      }
+    }
+    
+    // Handle string types and validate
+    if (typeof type === 'string' && isConfigPropertyType(type)) {
+      return type;
+    }
+    
+    // Default fallback
+    return 'String';
   }
 
 }

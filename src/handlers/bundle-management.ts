@@ -74,6 +74,19 @@ export const bundleListTool = {
       nameFilter: {
         type: 'string',
         description: 'Filter bundles by name or symbolic name'
+      },
+      limit: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 1000,
+        default: 100,
+        description: 'Maximum number of bundles to return per instance'
+      },
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        default: 0,
+        description: 'Number of bundles to skip for pagination'
       }
     }
   }
@@ -204,7 +217,9 @@ export async function handleBundleList(
         return await bundleService.listBundles(
           instance,
           validatedInput.stateFilter,
-          validatedInput.nameFilter
+          validatedInput.nameFilter,
+          validatedInput.limit ?? 100,
+          validatedInput.offset ?? 0
         );
       },
       {
@@ -574,8 +589,11 @@ function buildBundleListResponse(requestId: RequestId, results: any[], instances
       response.summary.successful++;
       response.results[instance.url] = {
         success: true,
-        bundles: result.data,
-        bundleCount: result.data.length
+        bundles: {
+          success: true,
+          data: result.data,
+          duration: result.duration
+        }
       };
     } else {
       response.summary.failed++;
@@ -640,12 +658,20 @@ function buildBundleDetailsResponse(requestId: RequestId, results: any[], instan
 
   results.forEach((result, index) => {
     const instance = instances[index];
-    if (result.success) {
+    if (result.success && result.data) {
       response.summary.successful++;
       response.results[instance.url] = {
         success: true,
         bundleDetails: result.data.bundleDetails,
-        message: result.data.message
+        message: result.data.message || 'Bundle details retrieved successfully'
+      };
+    } else if (result.success) {
+      // Service succeeded but no data - this indicates a problem
+      response.summary.successful++;
+      response.results[instance.url] = {
+        success: true,
+        bundleDetails: undefined,
+        message: 'Bundle details request succeeded but no data returned'
       };
     } else {
       response.summary.failed++;

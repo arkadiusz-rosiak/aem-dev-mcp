@@ -56,7 +56,9 @@ export const InstanceSelectionSchema = z.object({
 
 export const BundleListSchema = InstanceSelectionSchema.extend({
   stateFilter: BundleStateSchema.optional(),
-  nameFilter: z.string().optional()
+  nameFilter: z.string().optional(),
+  limit: z.number().int().min(1).max(1000).optional().default(100),
+  offset: z.number().int().min(0).optional().default(0)
 });
 
 export const BundleOperationSchema = InstanceSelectionSchema.extend({
@@ -110,7 +112,9 @@ export const BundleInstallSchema = InstanceSelectionSchema.extend({
 
 export const ComponentListSchema = InstanceSelectionSchema.extend({
   stateFilter: ComponentStateSchema.optional(),
-  nameFilter: z.string().optional()
+  nameFilter: z.string().optional(),
+  limit: z.number().int().min(1).max(1000).optional().default(100),
+  offset: z.number().int().min(0).optional().default(0)
 });
 
 export const ComponentOperationSchema = InstanceSelectionSchema.extend({
