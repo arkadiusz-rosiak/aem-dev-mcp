@@ -20,7 +20,14 @@ jest.mock('@/services/alias-resolver.js');
 jest.mock('@/services/parallel-executor.js');
 jest.mock('@/services/http-client.js');
 jest.mock('@/services/health-service.js');
-jest.mock('@/utils/logger.js');
+jest.mock('@/utils/logger.js', () => ({
+  createLogger: jest.fn(() => ({
+    error: jest.fn(),
+    warn: jest.fn(),
+    info: jest.fn(),
+    debug: jest.fn()
+  }))
+}));
 
 describe('handleHealthCheck', () => {
   let mockResolver: jest.Mocked<AliasResolver>;
@@ -28,8 +35,8 @@ describe('handleHealthCheck', () => {
   let mockClient: jest.Mocked<AemHttpClient>;
   
   const testInstances: AEMInstance[] = [
-    { url: 'http://author-prod:4502', username: 'admin', password: 'admin' },
-    { url: 'http://publish-prod:4503', username: 'admin', password: 'admin' }
+    { url: 'http://test-author.example.com:4502', username: 'testuser', password: 'testpass' },
+    { url: 'http://test-publish.example.com:4503', username: 'testuser', password: 'testpass' }
   ] as const;
 
   const mockMetrics = {
@@ -64,7 +71,7 @@ describe('handleHealthCheck', () => {
   };
 
   const mockHealthStatus: HealthStatus = {
-    instance: 'http://author-prod:4502',
+    instance: 'http://test-author.example.com:4502',
     overall: HEALTH_STATUS.HEALTHY,
     timestamp: new Date(),
     checks: [
@@ -93,7 +100,7 @@ describe('handleHealthCheck', () => {
       
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: 'http://author-prod:4502',
+          instanceUrl: 'http://test-author.example.com:4502',
           success: true,
           data: mockHealthStatus,
           duration: 200
@@ -108,21 +115,21 @@ describe('handleHealthCheck', () => {
       const responseData = JSON.parse(result.content[0].text!);
       expect(responseData.summary.total).toBe(1);
       expect(responseData.summary.healthy).toBe(1);
-      expect(responseData.results).toHaveProperty('http://author-prod:4502');
+      expect(Object.keys(responseData.results)).toContain('http://test-author.example.com:4502');
     });
 
     it('should handle aliases parameter correctly', async () => {
-      const args = { aliases: ['author-prod'] };
+      const args = { aliases: ['test-author'] };
       
       mockResolver.resolveAlias.mockResolvedValueOnce({
-        alias: 'author-prod',
+        alias: 'test-author',
         instances: [testInstances[0]],
         resolved: true
       });
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: 'http://author-prod:4502',
+          instanceUrl: 'http://test-author.example.com:4502',
           success: true,
           data: mockHealthStatus,
           duration: 200
@@ -132,7 +139,7 @@ describe('handleHealthCheck', () => {
       const result = await handleHealthCheck(args, mockResolver, mockExecutor, mockClient);
 
       expect(result.isError).toBe(false);
-      expect(mockResolver.resolveAlias).toHaveBeenCalledWith('author-prod');
+      expect(mockResolver.resolveAlias).toHaveBeenCalledWith('test-author');
     });
 
     it('should always include metrics in response', async () => {
@@ -140,7 +147,7 @@ describe('handleHealthCheck', () => {
 
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: 'http://author-prod:4502',
+          instanceUrl: 'http://test-author.example.com:4502',
           success: true,
           data: mockHealthStatus,
           duration: 200
@@ -152,11 +159,11 @@ describe('handleHealthCheck', () => {
       expect(result.isError).toBe(false);
       
       const responseData = JSON.parse(result.content[0].text!);
-      expect(responseData.results['http://author-prod:4502']).toHaveProperty('metrics');
-      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('memory');
-      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('threads');
-      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('repository');
-      expect(responseData.results['http://author-prod:4502'].metrics).toHaveProperty('bundles');
+      expect(responseData.results['http://test-author.example.com:4502']).toHaveProperty('metrics');
+      expect(responseData.results['http://test-author.example.com:4502'].metrics).toHaveProperty('memory');
+      expect(responseData.results['http://test-author.example.com:4502'].metrics).toHaveProperty('threads');
+      expect(responseData.results['http://test-author.example.com:4502'].metrics).toHaveProperty('repository');
+      expect(responseData.results['http://test-author.example.com:4502'].metrics).toHaveProperty('bundles');
     });
 
     it('should handle validation errors correctly', async () => {
@@ -174,7 +181,7 @@ describe('handleHealthCheck', () => {
       
       mockExecutor.executeOnInstances.mockResolvedValueOnce([
         {
-          instanceUrl: 'http://author-prod:4502',
+          instanceUrl: 'http://test-author.example.com:4502',
           success: false,
           error: 'Connection failed',
           duration: 5000
@@ -187,14 +194,14 @@ describe('handleHealthCheck', () => {
       
       const responseData = JSON.parse(result.content[0].text!);
       expect(responseData.summary.unhealthy).toBe(1);
-      expect(responseData.results['http://author-prod:4502'].overall).toBe(HEALTH_STATUS.UNHEALTHY);
+      expect(responseData.results['http://test-author.example.com:4502'].overall).toBe(HEALTH_STATUS.UNHEALTHY);
     });
 
     it('should respect maximum instance limit', async () => {
       const tooManyInstances = Array.from({ length: 25 }, (_, i) => ({
         url: `http://instance-${i}:4502`,
-        username: 'admin',
-        password: 'admin'
+        username: 'testuser',
+        password: 'testpass'
       }));
 
       const args = { instances: tooManyInstances };

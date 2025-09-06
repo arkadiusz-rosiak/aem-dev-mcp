@@ -189,7 +189,7 @@ export async function handleHealthCheck(
     };
     
   } catch (error) {
-    logger?.error?.('Health check failed', { error, requestId });
+    logger.error('Health check failed', { error, requestId });
     
     const errorMessage = error instanceof z.ZodError 
       ? `Validation failed: ${error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
@@ -288,7 +288,7 @@ function buildHealthCheckResponse(
 
 export const healthCheckTool = {
   name: 'aem_health_check',
-  description: 'Performs comprehensive health checks on AEM instances including memory, threads, bundles, requests, and repository metrics',
+  description: 'Performs comprehensive health checks on AEM instances including memory, threads, bundles, requests, and repository metrics. Either aliases or instances must be provided.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -329,10 +329,6 @@ export const healthCheckTool = {
         maxItems: MAX_CONCURRENT_INSTANCES
       }
     },
-    oneOf: [
-      { required: ['aliases'] },
-      { required: ['instances'] }
-    ],
     additionalProperties: false
   } as const
 } as const;
