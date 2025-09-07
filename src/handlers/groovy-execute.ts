@@ -267,11 +267,11 @@ export const groovyExecuteTool = {
     properties: {
       script: {
         type: 'string',
-        description: 'Groovy script content to execute directly'
+        description: 'Groovy script content to execute directly (required if scriptPath not provided)'
       },
       scriptPath: {
         type: 'string',
-        description: 'Path to existing script on AEM instance (e.g., /conf/groovyconsole/scripts/example.groovy)'
+        description: 'Path to existing script on AEM instance (required if script not provided)'
       },
       instanceAlias: {
         type: 'string',
@@ -282,10 +282,6 @@ export const groovyExecuteTool = {
         description: 'Execution timeout in milliseconds (optional, default 30000)'
       }
     },
-    required: ['instanceAlias'],
-    oneOf: [
-      { required: ['script'] },
-      { required: ['scriptPath'] }
-    ]
+    required: ['instanceAlias']
   } as const
 } as const;
