@@ -281,7 +281,6 @@ export const groovyExecuteTool = {
         type: 'number',
         description: 'Execution timeout in milliseconds (optional, default 30000)'
       }
-    },
-    required: ['instanceAlias']
+    }
   } as const
 } as const;
