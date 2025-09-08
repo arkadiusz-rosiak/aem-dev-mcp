@@ -5,7 +5,13 @@ import {
   TimeoutMs,
   ConcurrencyLimit,
   isNonEmptyArray,
-  NonEmptyArray
+  NonEmptyArray,
+  GroovyConsoleResponse,
+  GroovyExecutionResponse,
+  GroovyExecutionResults,
+  SingleInstanceGroovyResult,
+  MultipleInstanceGroovyResult,
+  GroovyExecuteResult
 } from '@/types/index.js';
 import {
   createConcurrencyLimit,
@@ -37,50 +43,6 @@ const createGroovyExecuteConfig = (timeout?: number): GroovyExecuteConfig => ({
   timeout: createTimeout(timeout || DEFAULT_TIMEOUT),
   maxConcurrency: createConcurrencyLimit(DEFAULT_CONCURRENCY)
 });
-
-interface GroovyConsoleResponse {
-  output?: string;
-  result?: unknown;
-  runningTime?: string;
-  exceptionStackTrace?: string;
-}
-
-interface GroovyExecutionResponse {
-  readonly success: boolean;
-  readonly instanceUrl: string;
-  readonly executionTime: number;
-  readonly output: string;
-  readonly result?: unknown;
-  readonly runningTime?: string;
-  readonly error?: {
-    message: string;
-    stackTrace?: string;
-    exceptionStackTrace?: string;
-  };
-}
-
-interface GroovyExecutionResults {
-  readonly alias: string;
-  readonly results: readonly GroovyExecutionResponse[];
-  readonly summary: {
-    readonly total: number;
-    readonly succeeded: number;
-    readonly failed: number;
-  };
-}
-
-interface SingleInstanceResult {
-  readonly requestId: string;
-  readonly instanceUrl: string;
-  readonly response: GroovyExecutionResponse;
-}
-
-interface MultipleInstanceResult {
-  readonly requestId: string;
-  readonly results: GroovyExecutionResults;
-}
-
-type GroovyExecuteResult = SingleInstanceResult | MultipleInstanceResult;
 
 async function executeGroovyScript(
   instance: AEMInstance,
@@ -256,7 +218,7 @@ export async function handleGroovyExecute(
         requestId,
         instanceUrl: instances[0].url,
         response
-      };
+      } as SingleInstanceGroovyResult;
     } else {
       const results = await executeOnMultipleInstances(
         instances,
@@ -270,7 +232,7 @@ export async function handleGroovyExecute(
       result = {
         requestId,
         results
-      };
+      } as MultipleInstanceGroovyResult;
     }
     
     return {
