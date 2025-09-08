@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # 5 minutes for entire job (setup + tests with 90s timeout each)
     
     strategy:
       matrix:
@@ -26,9 +27,12 @@ jobs:
 
     - name: Install dependencies
       run: npm ci
+      timeout-minutes: 2
 
     - name: Run type check
       run: npm run typecheck
+      timeout-minutes: 1
 
     - name: Run tests
       run: npm test
+      timeout-minutes: 2  # Tests have 90s timeout each, 2 minutes should be enough
