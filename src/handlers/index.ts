@@ -4,6 +4,7 @@ import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { handleHealthCheck, healthCheckTool } from './health-check.js';
+import { handleGroovyExecute, groovyExecuteTool } from './groovy-execute.js';
 import { getDefaultLogger } from '@/utils/logger.js';
 import { extractErrorMessage } from '@/utils/errors.js';
 
@@ -15,7 +16,7 @@ export function registerHandlers(server: Server, configPath: string): void {
   
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
-      tools: [healthCheckTool]
+      tools: [healthCheckTool, groovyExecuteTool]
     };
   });
   
@@ -25,6 +26,36 @@ export function registerHandlers(server: Server, configPath: string): void {
     if (name === 'aem_health_check') {
       try {
         const result = await handleHealthCheck(
+          args,
+          aliasResolver,
+          parallelExecutor,
+          httpClient
+        );
+        return {
+          content: result.content
+        };
+      } catch (error) {
+        logger.error(extractErrorMessage(error), { 
+          tool: name, 
+          arguments: args,
+          stack: error instanceof Error ? error.stack : undefined 
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: extractErrorMessage(error),
+              tool: name
+            })
+          }],
+          isError: true
+        };
+      }
+    }
+    
+    if (name === 'aem_groovy_execute') {
+      try {
+        const result = await handleGroovyExecute(
           args,
           aliasResolver,
           parallelExecutor,
