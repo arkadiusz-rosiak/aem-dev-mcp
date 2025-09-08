@@ -26,7 +26,7 @@ const DEFAULT_CONFIG: AemLogsServiceConfig = {
   timeout: TIMEOUTS.DEFAULT,
   logTimeout: (TIMEOUTS.DEFAULT * 2) as TimeoutMs,
   actionDelayMs: 500,
-  maxLogLines: 50000
+  maxLogLines: 50000 // Warning: Processing large logs may impact performance
 } as const;
 
 export class AemLogsService extends BaseOSGiService {
@@ -84,6 +84,15 @@ export class AemLogsService extends BaseOSGiService {
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
+
+      // Log performance warning for very large log files
+      if (allLines.length > this.#config.maxLogLines) {
+        this.logger.warn(`Processing large log file with ${allLines.length} lines (max recommended: ${this.#config.maxLogLines}). This may impact performance.`, {
+          instance: instance.url,
+          logType,
+          totalLines: allLines.length
+        });
+      }
 
       // Apply client-side pagination
       const paginationResult = this.#paginateLogs(allLines, page);
@@ -245,9 +254,10 @@ export class AemLogsService extends BaseOSGiService {
       
       return { valid: true };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       return {
         valid: false,
-        error: `Invalid regex pattern: ${error instanceof Error ? error.message : 'Unknown error'}`
+        error: `Invalid regex pattern '${pattern}': ${errorMsg}. Examples of valid patterns: 'ERROR.*', '\\d{4}-\\d{2}-\\d{2}', 'Exception|Error'`
       };
     }
   }

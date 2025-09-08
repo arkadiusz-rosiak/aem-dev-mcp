@@ -6,6 +6,9 @@ export interface PaginationConfig {
   readonly MODEL_NAME: string;
 }
 
+// Note: Using 'gpt-4' encoding as fallback for Claude Sonnet 4 token counting
+// since tiktoken doesn't natively support Claude models. GPT-4 provides
+// a reasonable approximation for token counting in English text.
 export const DEFAULT_PAGINATION_CONFIG: PaginationConfig = {
   MAX_TOKENS_PER_PAGE: 20000,
   MODEL_NAME: 'gpt-4'
