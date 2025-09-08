@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const MAX_CONCURRENT_INSTANCES = 20;
+// Default timeout of 30s is reasonable for most AEM Groovy scripts
+// Complex scripts can specify longer timeouts up to 10 minutes
 export const DEFAULT_TIMEOUT = 30000;
 
 export const GroovyExecuteSchema = z.object({

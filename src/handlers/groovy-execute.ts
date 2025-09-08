@@ -99,6 +99,8 @@ async function executeGroovyScript(
       formData.append('scriptPath', input.scriptPath);
     }
     
+    // Send form data to AEM Groovy Console endpoint
+    // Note: Content-Type header is automatically set by axios for URLSearchParams
     const response: AxiosResponse = await client.makeRequest(
       instance,
       '/bin/groovyconsole/post.json',
@@ -183,21 +185,21 @@ async function executeOnMultipleInstances(
     }
   );
   
-  const groovyResults: GroovyExecutionResponse[] = results.map(result => {
-    if (result.success && result.data) {
-      return result.data as GroovyExecutionResponse;
+  const createFailureResponse = (result: any): GroovyExecutionResponse => ({
+    success: false,
+    instanceUrl: result.instanceUrl || 'unknown',
+    executionTime: result.duration || 0,
+    output: '',
+    error: {
+      message: result.error || 'Unknown error'
     }
-    
-    return {
-      success: false,
-      instanceUrl: result.instanceUrl || 'unknown',
-      executionTime: result.duration || 0,
-      output: '',
-      error: {
-        message: result.error || 'Unknown error'
-      }
-    };
   });
+
+  const groovyResults: GroovyExecutionResponse[] = results.map(result => 
+    result.success && result.data 
+      ? result.data as GroovyExecutionResponse
+      : createFailureResponse(result)
+  );
   
   const summary = groovyResults.reduce(
     (acc, result) => ({
