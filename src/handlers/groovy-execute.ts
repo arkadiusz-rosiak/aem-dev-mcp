@@ -10,7 +10,7 @@ import {
 import {
   createConcurrencyLimit,
   createRequestId,
-  createTimeoutMs
+  createTimeout
 } from '@/utils/type-factories.js';
 import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
@@ -34,7 +34,7 @@ interface GroovyExecuteConfig {
 }
 
 const createGroovyExecuteConfig = (timeout?: number): GroovyExecuteConfig => ({
-  timeout: createTimeoutMs(timeout || DEFAULT_TIMEOUT),
+  timeout: createTimeout(timeout || DEFAULT_TIMEOUT),
   maxConcurrency: createConcurrencyLimit(DEFAULT_CONCURRENCY)
 });
 
@@ -81,10 +81,6 @@ interface MultipleInstanceResult {
 }
 
 type GroovyExecuteResult = SingleInstanceResult | MultipleInstanceResult;
-
-function isMultipleInstanceResult(result: GroovyExecuteResult): result is MultipleInstanceResult {
-  return 'results' in result && !('instanceUrl' in result);
-}
 
 async function executeGroovyScript(
   instance: AEMInstance,
@@ -188,8 +184,8 @@ async function executeOnMultipleInstances(
   );
   
   const groovyResults: GroovyExecutionResponse[] = results.map(result => {
-    if ('success' in result && 'instanceUrl' in result) {
-      return result as GroovyExecutionResponse;
+    if (result.success && result.data) {
+      return result.data as GroovyExecutionResponse;
     }
     
     return {
@@ -238,7 +234,7 @@ export async function handleGroovyExecute(
       throw new Error(`Failed to resolve alias: ${validatedInput.instanceAlias}. ${aliasResult.error || ''}`);
     }
     
-    const instances = aliasResult.instances;
+    const instances = [...aliasResult.instances];
     
     if (!isNonEmptyArray(instances)) {
       throw new Error(`No instances found for alias: ${validatedInput.instanceAlias}`);
