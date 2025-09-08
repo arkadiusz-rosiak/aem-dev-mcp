@@ -182,20 +182,38 @@ async function resolveInstances(
 
 function buildLogsSearchResponse(
   requestId: RequestId, 
-  results: unknown[], 
+  results: any[], 
   instances: AEMInstance[],
   input: AemLogsSearchInput
-): AemLogsSearchOutput & { requestId: RequestId; metadata: { timestamp: string; search_parameters: { regex: string; log_type: string; page: number }; totalInstances: number } } {
-  const searchResults: unknown[] = [];
+): AemLogsSearchOutput & { requestId: RequestId; metadata: { timestamp: string; search_parameters: { regex: string; log_type: string; page: number }; totalInstances: number; llm_hint: string } } {
+  const searchResults: any[] = [];
   let successfulInstances = 0;
   let failedInstances = 0;
 
   results.forEach((result, index) => {
     const instance = instances[index];
     
-    if (result.success && result.data.success) {
+    if (result.success && result.data?.success) {
       successfulInstances++;
-      searchResults.push(result.data.result);
+      // Correct path is result.data.data.result (not result.data.result)
+      const logResult = result.data.data?.result;
+      if (logResult && logResult.entries) {
+        searchResults.push(logResult);
+      } else {
+        // Handle missing result
+        searchResults.push({
+          instance: instance.url,
+          log_type: input.log_type,
+          entries: [],
+          pagination: {
+            current_page: input.page,
+            total_pages: 1,
+            total_entries: 0,
+            entries_on_page: 0
+          },
+          error: 'No log entries found in result'
+        });
+      }
     } else {
       failedInstances++;
       // Add failed instance with empty results
@@ -209,11 +227,38 @@ function buildLogsSearchResponse(
           total_entries: 0,
           entries_on_page: 0
         },
-        regex_used: input.regex,
         error: result.error?.message || result.data?.error?.message || 'Unknown error'
       });
     }
   });
+
+  // Create LLM hint for pagination
+  const hasMorePages = searchResults.some(result => 
+    result.pagination && result.pagination.current_page < result.pagination.total_pages
+  );
+  
+  // Check if any instance had page beyond range error
+  // Check both raw results and processed searchResults for page beyond range
+  const hasPageBeyondRangeInResults = results.some(result => 
+    !result.success && (
+      (result.error?.message && result.error.message.includes('exceeds total pages')) ||
+      (result.data?.error?.message && result.data?.error?.message.includes('exceeds total pages'))
+    )
+  );
+  
+  const hasPageBeyondRangeInSearchResults = searchResults.some(result => 
+    result.error && result.error.includes('exceeds total pages')
+  );
+  
+  const hasPageBeyondRange = hasPageBeyondRangeInResults || hasPageBeyondRangeInSearchResults;
+  
+  const llmHint = hasPageBeyondRange
+    ? `HINT: Page ${input.page} is beyond available pages. Try page 1 or check available page range.`
+    : hasMorePages 
+      ? `HINT: More results available on page ${input.page + 1}. Use page parameter to see additional entries.`
+      : input.page > 1 
+        ? `This is page ${input.page} of the results.`
+        : '';
 
   return {
     requestId,
@@ -230,7 +275,8 @@ function buildLogsSearchResponse(
         log_type: input.log_type,
         page: input.page
       },
-      totalInstances: instances.length
+      totalInstances: instances.length,
+      llm_hint: llmHint
     }
   };
 }

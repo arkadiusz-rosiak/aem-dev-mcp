@@ -39,7 +39,6 @@ export interface LogSearchResult {
   readonly log_type: LogType;
   readonly entries: readonly string[];
   readonly pagination: PaginationMetadata;
-  readonly regex_used: string;
 }
 
 export interface AemLogsSearchOutput {
@@ -97,11 +96,9 @@ export const isLogSearchResult = (value: unknown): value is LogSearchResult => {
     'log_type' in value &&
     'entries' in value &&
     'pagination' in value &&
-    'regex_used' in value &&
     typeof (value as any).instance === 'string' &&
     isLogType((value as any).log_type) &&
-    Array.isArray((value as any).entries) &&
-    typeof (value as any).regex_used === 'string'
+    Array.isArray((value as any).entries)
   );
 };
 

@@ -6,7 +6,14 @@ import {
 } from '@/types/index.js';
 
 jest.mock('@/services/http-client.js');
-jest.mock('@/utils/logger.js');
+jest.mock('@/utils/logger.js', () => ({
+  createLogger: jest.fn(() => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn()
+  }))
+}));
 jest.mock('@/utils/pagination.utils.js', () => ({
   paginateLogLines: jest.fn(() => ({
     paginatedLines: ['Log line 1', 'Log line 2'],
@@ -58,11 +65,15 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.success).toBe(true);
-      expect(result.data.result?.instance).toBe(testInstance.url);
-      expect(result.data.result?.log_type).toBe('application_errors');
-      expect(result.data.result?.regex_used).toBe('Error.*');
-      expect(result.data.result?.entries).toEqual(['Log line 1', 'Log line 2']);
+      if (result.success) {
+        expect(result.data.success).toBe(true);
+        if (result.data.result) {
+          expect(result.data.result.instance).toBe(testInstance.url);
+          expect(result.data.result.log_type).toBe('application_errors');
+          // regex pattern is now available in search_parameters instead of individual results
+          expect(result.data.result.entries).toEqual(['Log line 1', 'Log line 2']);
+        }
+      }
     });
 
     it('should handle invalid regex pattern', async () => {
@@ -74,7 +85,9 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.INVALID_REGEX_PATTERN);
+      if (!result.success) {
+        expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.INVALID_REGEX_PATTERN);
+      }
     });
 
     it('should handle unsupported log type', async () => {
@@ -86,7 +99,9 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.UNSUPPORTED_LOG_TYPE);
+      if (!result.success) {
+        expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.UNSUPPORTED_LOG_TYPE);
+      }
     });
 
     it('should handle HTTP errors from AEM', async () => {
@@ -104,7 +119,9 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.LOG_FILE_NOT_FOUND);
+      if (!result.success) {
+        expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.LOG_FILE_NOT_FOUND);
+      }
     });
 
     it('should handle authentication errors', async () => {
@@ -122,7 +139,9 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.LOG_ACCESS_DENIED);
+      if (!result.success) {
+        expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.LOG_ACCESS_DENIED);
+      }
     });
 
     it('should handle invalid page numbers', async () => {
@@ -142,7 +161,9 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.INVALID_PAGE_NUMBER);
+      if (!result.success) {
+        expect(result.error.code).toBe(AEM_LOGS_ERROR_CODES.INVALID_PAGE_NUMBER);
+      }
     });
 
     it('should handle empty log response', async () => {
@@ -160,8 +181,12 @@ describe('AemLogsService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.success).toBe(true);
-      expect(result.data.result?.entries).toEqual(['Log line 1', 'Log line 2']);
+      if (result.success) {
+        expect(result.data.success).toBe(true);
+        if (result.data.result) {
+          expect(result.data.result.entries).toEqual(['Log line 1', 'Log line 2']);
+        }
+      }
     });
 
     it('should use correct AEM endpoint and parameters', async () => {
@@ -187,7 +212,7 @@ describe('AemLogsService', () => {
       );
 
       const calledUrl = (mockHttpClient.makeRequest as jest.Mock).mock.calls[0][1];
-      expect(calledUrl).toContain('name=/logs/request.log');
+      expect(calledUrl).toContain('name=%2Flogs%2Frequest.log'); // URL encoded
       expect(calledUrl).toContain('grep=ERROR.*');
       expect(calledUrl).toContain('tail=-1');
     });

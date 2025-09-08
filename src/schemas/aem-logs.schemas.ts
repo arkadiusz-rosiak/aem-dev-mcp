@@ -43,8 +43,7 @@ export const LogSearchResultSchema = z.object({
   instance: z.string().min(1),
   log_type: LogTypeSchema,
   entries: z.array(z.string()),
-  pagination: PaginationMetadataSchema,
-  regex_used: z.string().min(1)
+  pagination: PaginationMetadataSchema
 });
 
 export const AemLogsSearchOutputSchema = z.object({

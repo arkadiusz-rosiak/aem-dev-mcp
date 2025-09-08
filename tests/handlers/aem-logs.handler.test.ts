@@ -7,7 +7,14 @@ import { AEMInstance } from '@/types/index.js';
 jest.mock('@/services/alias-resolver.js');
 jest.mock('@/services/parallel-executor.js');
 jest.mock('@/services/http-client.js');
-jest.mock('@/utils/logger.js');
+jest.mock('@/utils/logger.js', () => ({
+  createLogger: jest.fn(() => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn()
+  }))
+}));
 
 describe('AEM Logs Handler', () => {
   let mockResolver: jest.Mocked<AliasResolver>;
@@ -66,7 +73,7 @@ describe('AEM Logs Handler', () => {
               total_entries: 1,
               entries_on_page: 1
             },
-            regex_used: 'ERROR.*'
+            // regex_used field removed - now in search_parameters
           },
           message: 'Search completed'
         }
@@ -80,7 +87,7 @@ describe('AEM Logs Handler', () => {
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
       
-      const response = JSON.parse(result.content[0].text);
+      const response = JSON.parse(result.content[0].text!);
       expect(response.summary.total_instances).toBe(1);
       expect(response.summary.successful_instances).toBe(1);
       expect(response.summary.failed_instances).toBe(0);
@@ -133,7 +140,7 @@ describe('AEM Logs Handler', () => {
 
       expect(result.isError).toBe(false);
       
-      const response = JSON.parse(result.content[0].text);
+      const response = JSON.parse(result.content[0].text!);
       expect(response.summary.successful_instances).toBe(0);
       expect(response.summary.failed_instances).toBe(1);
       expect(response.results[0].error).toBe('Log file not found');
@@ -160,7 +167,7 @@ describe('AEM Logs Handler', () => {
               total_entries: 0,
               entries_on_page: 0
             },
-            regex_used: 'test'
+            // regex_used field removed - now in search_parameters
           }
         }
       }]);
@@ -169,7 +176,7 @@ describe('AEM Logs Handler', () => {
 
       expect(result.isError).toBe(false);
       
-      const response = JSON.parse(result.content[0].text);
+      const response = JSON.parse(result.content[0].text!);
       expect(response.metadata.search_parameters.log_type).toBe('application_errors');
       expect(response.metadata.search_parameters.page).toBe(1);
     });
@@ -196,7 +203,7 @@ describe('AEM Logs Handler', () => {
               log_type: 'application_errors',
               entries: ['ERROR: Test 1'],
               pagination: { current_page: 1, total_pages: 1, total_entries: 1, entries_on_page: 1 },
-              regex_used: 'ERROR.*'
+              // regex_used field removed - now in search_parameters
             }
           }
         },
@@ -209,7 +216,7 @@ describe('AEM Logs Handler', () => {
               log_type: 'application_errors',
               entries: ['ERROR: Test 2'],
               pagination: { current_page: 1, total_pages: 1, total_entries: 1, entries_on_page: 1 },
-              regex_used: 'ERROR.*'
+              // regex_used field removed - now in search_parameters
             }
           }
         }
@@ -221,7 +228,7 @@ describe('AEM Logs Handler', () => {
 
       expect(result.isError).toBe(false);
       
-      const response = JSON.parse(result.content[0].text);
+      const response = JSON.parse(result.content[0].text!);
       expect(response.summary.total_instances).toBe(2);
       expect(response.summary.successful_instances).toBe(2);
       expect(response.results).toHaveLength(2);

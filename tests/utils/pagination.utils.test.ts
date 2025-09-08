@@ -1,8 +1,7 @@
 import { 
   paginateLogLines, 
   countTokens, 
-  TokenCountError,
-  DEFAULT_PAGINATION_CONFIG 
+  TokenCountError
 } from '@/utils/pagination.utils.js';
 
 jest.mock('tiktoken', () => ({
@@ -65,9 +64,10 @@ describe('pagination.utils', () => {
     it('should handle page beyond available pages', () => {
       const result = paginateLogLines(shortLines, 2);
       
-      expect(result.currentPage).toBe(1);
+      expect(result.currentPage).toBe(2); // Keep original page number for error detection
       expect(result.totalPages).toBe(1);
-      expect(result.paginatedLines).toEqual([]);
+      expect(result.paginatedLines).toEqual([]); // Empty results
+      expect(result.entriesOnPage).toBe(0);
     });
 
     it('should split lines across multiple pages when token limit is exceeded', () => {

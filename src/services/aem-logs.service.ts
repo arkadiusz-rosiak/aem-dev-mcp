@@ -77,13 +77,49 @@ export class AemLogsService extends BaseOSGiService {
         return createAemLogsFailureResult(logsResult.error, Date.now() - startTime);
       }
 
-      const rawLogs = logsResult.data;
+      const rawLogs = logsResult.data || '';
+      
+      // Log debug info about received data
+      this.logger.debug('Raw logs received', {
+        instance: instance.url,
+        logType,
+        rawLogsLength: rawLogs.length,
+        firstChars: rawLogs.substring(0, 100)
+      });
       
       // Split into lines and filter empty lines
-      const allLines = rawLogs
+      let allLines = rawLogs
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
+
+      // Apply client-side regex filtering (AEM grep only does string matching)
+      try {
+        const regexPattern = new RegExp(regex, 'i');
+        const filteredLines = allLines.filter(line => regexPattern.test(line));
+        
+        this.logger.debug('Client-side regex filtering', {
+          instance: instance.url,
+          originalLines: allLines.length,
+          filteredLines: filteredLines.length,
+          regex
+        });
+        
+        allLines = filteredLines;
+      } catch (error) {
+        this.logger.warn('Invalid regex pattern, using all lines', {
+          instance: instance.url,
+          regex,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+
+      this.logger.debug('Processed log lines', {
+        instance: instance.url,
+        logType,
+        totalLines: allLines.length,
+        firstLines: allLines.slice(0, 3)
+      });
 
       // Log performance warning for very large log files
       if (allLines.length > this.#config.maxLogLines) {
@@ -94,11 +130,34 @@ export class AemLogsService extends BaseOSGiService {
         });
       }
 
-      // Apply client-side pagination
+      // Apply client-side pagination with conservative token limit
       const paginationResult = this.#paginateLogs(allLines, page);
       if (!paginationResult.success) {
         return createAemLogsFailureResult(paginationResult.error, Date.now() - startTime);
       }
+      
+      // Log pagination stats for monitoring
+      this.logger.debug('Pagination applied', {
+        instance: instance.url,
+        totalLines: allLines.length,
+        pageLines: paginationResult.data.entriesOnPage,
+        currentPage: paginationResult.data.currentPage,
+        totalPages: paginationResult.data.totalPages,
+        estimatedTokensForPage: this.#estimateTokensForEntries(paginationResult.data.paginatedLines)
+      });
+
+      // Log pagination result for debugging
+      this.logger.debug('Pagination result', {
+        instance: instance.url,
+        logType,
+        pagination: {
+          currentPage: paginationResult.data.currentPage,
+          totalPages: paginationResult.data.totalPages,
+          totalEntries: paginationResult.data.totalEntries,
+          entriesOnPage: paginationResult.data.entriesOnPage,
+          entriesPreview: paginationResult.data.paginatedLines.slice(0, 2)
+        }
+      });
 
       const logSearchResult: LogSearchResult = {
         instance: instance.url,
@@ -109,8 +168,7 @@ export class AemLogsService extends BaseOSGiService {
           total_pages: paginationResult.data.totalPages,
           total_entries: paginationResult.data.totalEntries,
           entries_on_page: paginationResult.data.entriesOnPage
-        },
-        regex_used: regex
+        }
       };
 
       const result: LogOperationResult = {
@@ -118,6 +176,14 @@ export class AemLogsService extends BaseOSGiService {
         result: logSearchResult,
         message: `Found ${paginationResult.data.totalEntries} log entries matching pattern`
       };
+
+      this.logger.debug('Created LogOperationResult', {
+        instance: instance.url,
+        success: result.success,
+        message: result.message,
+        hasResult: !!result.result,
+        resultInstance: result.result?.instance
+      });
 
       return createAemLogsSuccessResult(result, Date.now() - startTime);
 
@@ -140,21 +206,38 @@ export class AemLogsService extends BaseOSGiService {
     const startTime = Date.now();
 
     try {
-      const queryParams = new URLSearchParams({
-        name: logPath,
-        grep: regex,
-        tail: '-1'
+      // Manual URL building to avoid encoding issues
+      const fullUrl = `/system/console/slinglog/tailer.txt?name=${encodeURIComponent(logPath)}&grep=${encodeURIComponent(regex)}&tail=-1`;
+      
+      this.logger.debug('Making request to AEM log endpoint', {
+        instance: instance.url,
+        logPath,
+        regex,
+        fullUrl
       });
 
       const response = await this.makeAuthenticatedRequest<string>(
         instance,
-        `/system/console/slinglog/tailer.txt?${queryParams}`,
+        fullUrl,
         'GET',
         undefined,
         this.#config.logTimeout,
         'Log tailer service unavailable',
         'Authentication required for log access'
       );
+
+      this.logger.debug('Response from AEM log endpoint', {
+        instance: instance.url,
+        success: response.success,
+        dataType: response.success ? typeof response.data : 'no data',
+        dataLength: response.success ? (response.data?.length || 0) : 0,
+        dataPreview: response.success ? response.data?.substring(0, 200) : 'no preview',
+        errorCode: !response.success ? response.error?.code : undefined,
+        errorMessage: !response.success ? response.error?.message : undefined,
+        duration: response.duration
+      });
+      
+      // Debug info shows HTTP works perfectly - remove forced error
 
       if (!response.success) {
         let aemLogsError: AemLogsError;
@@ -260,6 +343,13 @@ export class AemLogsService extends BaseOSGiService {
         error: `Invalid regex pattern '${pattern}': ${errorMsg}. Examples of valid patterns: 'ERROR.*', '\\d{4}-\\d{2}-\\d{2}', 'Exception|Error'`
       };
     }
+  }
+
+  #estimateTokensForEntries(entries: readonly string[]): number {
+    if (entries.length === 0) return 0;
+    // Simple estimation: average tokens per character for typical log entries
+    const totalChars = entries.join('\n').length;
+    return Math.ceil(totalChars / 3); // Rough approximation: 3 chars per token
   }
 
   #createAemLogsError(
