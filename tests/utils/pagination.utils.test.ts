@@ -64,21 +64,20 @@ describe('pagination.utils', () => {
     it('should handle page beyond available pages', () => {
       const result = paginateLogLines(shortLines, 2);
       
-      expect(result.currentPage).toBe(2); // Keep original page number for error detection
+      expect(result.currentPage).toBe(2);
       expect(result.totalPages).toBe(1);
-      expect(result.paginatedLines).toEqual([]); // Empty results
+      expect(result.paginatedLines).toEqual([]);
       expect(result.entriesOnPage).toBe(0);
     });
 
     it('should split lines across multiple pages when token limit is exceeded', () => {
-      // Mock longer token count to trigger pagination
       const mockEncoding = require('tiktoken');
       mockEncoding.encoding_for_model.mockImplementation(() => ({
         encode: jest.fn((text: string) => {
           if (text === 'Long line that exceeds token limit') {
-            return new Array(15000).fill(0); // 15k tokens
+            return new Array(15000).fill(0);
           }
-          return new Array(100).fill(0); // 100 tokens per line
+          return new Array(100).fill(0);
         }),
         free: jest.fn()
       }));

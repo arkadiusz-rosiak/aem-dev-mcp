@@ -73,7 +73,6 @@ describe('AEM Logs Handler', () => {
               total_entries: 1,
               entries_on_page: 1
             },
-            // regex_used field removed - now in search_parameters
           },
           message: 'Search completed'
         }
@@ -96,7 +95,6 @@ describe('AEM Logs Handler', () => {
 
     it('should handle validation errors', async () => {
       const invalidArgs = {
-        // Missing required 'regex' field
         log_type: 'application_errors'
       };
 
@@ -150,7 +148,6 @@ describe('AEM Logs Handler', () => {
       const mockArgs = {
         instances: [testInstance],
         regex: 'test'
-        // No log_type or page specified
       };
 
       mockExecutor.executeOnInstances = jest.fn().mockResolvedValue([{
@@ -167,7 +164,6 @@ describe('AEM Logs Handler', () => {
               total_entries: 0,
               entries_on_page: 0
             },
-            // regex_used field removed - now in search_parameters
           }
         }
       }]);
@@ -203,8 +199,7 @@ describe('AEM Logs Handler', () => {
               log_type: 'application_errors',
               entries: ['ERROR: Test 1'],
               pagination: { current_page: 1, total_pages: 1, total_entries: 1, entries_on_page: 1 },
-              // regex_used field removed - now in search_parameters
-            }
+              }
           }
         },
         {
@@ -216,8 +211,7 @@ describe('AEM Logs Handler', () => {
               log_type: 'application_errors',
               entries: ['ERROR: Test 2'],
               pagination: { current_page: 1, total_pages: 1, total_entries: 1, entries_on_page: 1 },
-              // regex_used field removed - now in search_parameters
-            }
+              }
           }
         }
       ];

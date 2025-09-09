@@ -70,7 +70,6 @@ describe('AemLogsService', () => {
         if (result.data.result) {
           expect(result.data.result.instance).toBe(testInstance.url);
           expect(result.data.result.log_type).toBe('application_errors');
-          // regex pattern is now available in search_parameters instead of individual results
           expect(result.data.result.entries).toEqual(['Log line 1', 'Log line 2']);
         }
       }

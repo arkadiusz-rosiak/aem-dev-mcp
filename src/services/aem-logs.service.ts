@@ -26,7 +26,7 @@ const DEFAULT_CONFIG: AemLogsServiceConfig = {
   timeout: TIMEOUTS.DEFAULT,
   logTimeout: (TIMEOUTS.DEFAULT * 2) as TimeoutMs,
   actionDelayMs: 500,
-  maxLogLines: 50000 // Warning: Processing large logs may impact performance
+  maxLogLines: 50000
 } as const;
 
 export class AemLogsService extends BaseOSGiService {
@@ -47,7 +47,6 @@ export class AemLogsService extends BaseOSGiService {
     const startTime = Date.now();
 
     try {
-      // Validate regex pattern
       const regexValidation = this.#validateRegexPattern(regex);
       if (!regexValidation.valid) {
         return createAemLogsFailureResult(
@@ -59,7 +58,6 @@ export class AemLogsService extends BaseOSGiService {
         );
       }
 
-      // Get log file path
       const logPath = LOG_TYPE_PATHS[logType];
       if (!logPath) {
         return createAemLogsFailureResult(
@@ -71,29 +69,23 @@ export class AemLogsService extends BaseOSGiService {
         );
       }
 
-      // Fetch logs from AEM
       const logsResult = await this.#fetchLogsFromAem(instance, logPath, regex);
       if (!logsResult.success) {
         return createAemLogsFailureResult(logsResult.error, Date.now() - startTime);
       }
 
       const rawLogs = logsResult.data || '';
-      
-      // Log debug info about received data
       this.logger.debug('Raw logs received', {
         instance: instance.url,
         logType,
         rawLogsLength: rawLogs.length,
         firstChars: rawLogs.substring(0, 100)
       });
-      
-      // Split into lines and filter empty lines
       let allLines = rawLogs
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
 
-      // Apply client-side regex filtering (AEM grep only does string matching)
       try {
         const regexPattern = new RegExp(regex, 'i');
         const filteredLines = allLines.filter(line => regexPattern.test(line));
@@ -121,7 +113,6 @@ export class AemLogsService extends BaseOSGiService {
         firstLines: allLines.slice(0, 3)
       });
 
-      // Log performance warning for very large log files
       if (allLines.length > this.#config.maxLogLines) {
         this.logger.warn(`Processing large log file with ${allLines.length} lines (max recommended: ${this.#config.maxLogLines}). This may impact performance.`, {
           instance: instance.url,
@@ -130,13 +121,10 @@ export class AemLogsService extends BaseOSGiService {
         });
       }
 
-      // Apply client-side pagination with conservative token limit
       const paginationResult = this.#paginateLogs(allLines, page);
       if (!paginationResult.success) {
         return createAemLogsFailureResult(paginationResult.error, Date.now() - startTime);
       }
-      
-      // Log pagination stats for monitoring
       this.logger.debug('Pagination applied', {
         instance: instance.url,
         totalLines: allLines.length,
@@ -146,7 +134,6 @@ export class AemLogsService extends BaseOSGiService {
         estimatedTokensForPage: estimateTokensForLines(paginationResult.data.paginatedLines)
       });
 
-      // Log pagination result for debugging
       this.logger.debug('Pagination result', {
         instance: instance.url,
         logType,
@@ -206,7 +193,6 @@ export class AemLogsService extends BaseOSGiService {
     const startTime = Date.now();
 
     try {
-      // Manual URL building to avoid encoding issues
       const fullUrl = `/system/console/slinglog/tailer.txt?name=${encodeURIComponent(logPath)}&grep=${encodeURIComponent(regex)}&tail=-1`;
       
       this.logger.debug('Making request to AEM log endpoint', {
@@ -236,8 +222,6 @@ export class AemLogsService extends BaseOSGiService {
         errorMessage: !response.success ? response.error?.message : undefined,
         duration: response.duration
       });
-      
-      // Debug info shows HTTP works perfectly - remove forced error
 
       if (!response.success) {
         let aemLogsError: AemLogsError;

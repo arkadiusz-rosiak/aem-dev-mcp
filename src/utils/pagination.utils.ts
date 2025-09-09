@@ -6,12 +6,8 @@ export interface PaginationConfig {
   readonly MODEL_NAME: string;
 }
 
-// Note: Using 'gpt-4' encoding as fallback for Claude Sonnet 4 token counting
-// since tiktoken doesn't natively support Claude models. GPT-4 provides
-// a reasonable approximation for token counting in English text.
-// Reduced limit to account for JSON metadata overhead (requestId, summary, pagination, etc.)
 export const DEFAULT_PAGINATION_CONFIG: PaginationConfig = {
-  MAX_TOKENS_PER_PAGE: 15000, // Reduced from 20k to leave room for JSON structure
+  MAX_TOKENS_PER_PAGE: 15000,
   MODEL_NAME: 'gpt-4'
 } as const;
 
@@ -84,13 +80,11 @@ export function paginateLogLines(
 
     const totalPages = Math.max(pages.length, 1);
     
-    // If requested page is beyond available pages, return empty results
-    // but preserve the original page number so service can detect the error
     if (requestedPage > totalPages) {
       return {
         paginatedLines: [],
         totalPages,
-        currentPage: requestedPage, // Keep original page number for error detection
+        currentPage: requestedPage,
         totalEntries: lines.length,
         entriesOnPage: 0
       };

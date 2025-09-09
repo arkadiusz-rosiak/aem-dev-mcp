@@ -195,12 +195,10 @@ function buildLogsSearchResponse(
     
     if (result.success && result.data?.success) {
       successfulInstances++;
-      // Correct path is result.data.data.result (not result.data.result)
       const logResult = result.data.data?.result;
       if (logResult && logResult.entries) {
         searchResults.push(logResult);
       } else {
-        // Handle missing result
         searchResults.push({
           instance: instance.url,
           log_type: input.log_type,
@@ -216,7 +214,6 @@ function buildLogsSearchResponse(
       }
     } else {
       failedInstances++;
-      // Add failed instance with empty results
       searchResults.push({
         instance: instance.url,
         log_type: input.log_type,
@@ -232,13 +229,9 @@ function buildLogsSearchResponse(
     }
   });
 
-  // Create LLM hint for pagination
   const hasMorePages = searchResults.some(result => 
     result.pagination && result.pagination.current_page < result.pagination.total_pages
   );
-  
-  // Check if any instance had page beyond range error
-  // Check both raw results and processed searchResults for page beyond range
   const hasPageBeyondRangeInResults = results.some(result => 
     !result.success && (
       (result.error?.message && result.error.message.includes('exceeds total pages')) ||
