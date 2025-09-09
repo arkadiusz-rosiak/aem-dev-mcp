@@ -4,6 +4,7 @@ import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { handleHealthCheck, healthCheckTool } from './health-check.js';
+import { handleGroovyExecute, groovyExecuteTool } from './groovy-execute.js';
 import { 
   handleBundleList, 
   handleBundleStart,
@@ -57,6 +58,7 @@ export function registerHandlers(server: Server, configPath: string): void {
     return {
       tools: [
         healthCheckTool,
+        groovyExecuteTool,
         bundleListTool,
         bundleStartTool,
         bundleStopTool,
@@ -87,6 +89,9 @@ export function registerHandlers(server: Server, configPath: string): void {
       switch (name) {
         case 'aem_health_check':
           result = await handleHealthCheck(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_groovy_execute':
+          result = await handleGroovyExecute(args, aliasResolver, parallelExecutor, httpClient);
           break;
         case 'aem_bundle_list':
           result = await handleBundleList(args, aliasResolver, parallelExecutor, httpClient);
