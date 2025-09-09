@@ -22,6 +22,7 @@ jest.mock('@/utils/pagination.utils.js', () => ({
     totalEntries: 2,
     entriesOnPage: 2
   })),
+  estimateTokensForLines: jest.fn(() => 100),
   TokenCountError: class TokenCountError extends Error {
     constructor(message: string) {
       super(message);
