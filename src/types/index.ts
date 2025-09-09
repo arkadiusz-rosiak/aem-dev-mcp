@@ -6,3 +6,4 @@ export * from './execution.types.js';
 export * from './utility.types.js';
 export * from './osgi.types.js';
 export * from './aem-logs.types.js';
+export * from './groovy.types.js';
