@@ -15,7 +15,7 @@ import {
   AEM_LOGS_ERROR_CODES,
   LOG_TYPE_PATHS
 } from '@/types/aem-logs.types.js';
-import { paginateLogLines, TokenCountError } from '@/utils/pagination.utils.js';
+import { paginateLogLines, TokenCountError, estimateTokensForLines } from '@/utils/pagination.utils.js';
 
 interface AemLogsServiceConfig extends BaseOSGiServiceConfig {
   readonly logTimeout: TimeoutMs;
@@ -143,7 +143,7 @@ export class AemLogsService extends BaseOSGiService {
         pageLines: paginationResult.data.entriesOnPage,
         currentPage: paginationResult.data.currentPage,
         totalPages: paginationResult.data.totalPages,
-        estimatedTokensForPage: this.#estimateTokensForEntries(paginationResult.data.paginatedLines)
+        estimatedTokensForPage: estimateTokensForLines(paginationResult.data.paginatedLines)
       });
 
       // Log pagination result for debugging
@@ -345,12 +345,6 @@ export class AemLogsService extends BaseOSGiService {
     }
   }
 
-  #estimateTokensForEntries(entries: readonly string[]): number {
-    if (entries.length === 0) return 0;
-    // Simple estimation: average tokens per character for typical log entries
-    const totalChars = entries.join('\n').length;
-    return Math.ceil(totalChars / 3); // Rough approximation: 3 chars per token
-  }
 
   #createAemLogsError(
     code: AEM_LOGS_ERROR_CODES,
