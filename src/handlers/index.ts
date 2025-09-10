@@ -45,6 +45,10 @@ import {
   configurationDeleteTool,
   configurationUnbindTool
 } from './configuration-management.js';
+import { 
+  handleAemLogsSearch,
+  aemLogsSearchTool
+} from './aem-logs.handler.js';
 import { getDefaultLogger } from '@/utils/logger.js';
 import { extractErrorMessage } from '@/utils/errors.js';
 
@@ -75,7 +79,8 @@ export function registerHandlers(server: Server, configPath: string): void {
         configurationCreateTool,
         configurationUpdateTool,
         configurationDeleteTool,
-        configurationUnbindTool
+        configurationUnbindTool,
+        aemLogsSearchTool
       ]
     };
   });
@@ -143,6 +148,9 @@ export function registerHandlers(server: Server, configPath: string): void {
           break;
         case 'aem_configuration_unbind':
           result = await handleConfigurationUnbind(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_logs_search':
+          result = await handleAemLogsSearch(args, aliasResolver, parallelExecutor, httpClient);
           break;
         default:
           throw new Error(`Unknown tool: ${name}`);
