@@ -23,9 +23,12 @@ Model Context Protocol (MCP) is an open protocol that enables seamless communica
 
 - Node.js >= 18.0.0
 - npm or yarn
-- Access to AEM instance(s) with admin credentials
+- Access to AEM instance(s)
 
 ### Setup
+
+
+#### From sources 
 
 1. Clone the repository:
 ```bash
@@ -50,18 +53,16 @@ touch ~/aem-instances.yaml
 
 5. Configure your AEM instances in `~/aem-instances.yaml`:
 ```yaml
-# Single instances
-author:
-  - url: http://localhost:4502
-    username: admin
-    password: admin
-
-publish:
-  - url: http://localhost:4503
-    username: admin
-    password: admin
 
 # Instance groups for different environments
+local:
+  - url: "http://localhost:4502"
+    username: "admin"
+    password: "admin"
+  - url: "http://localhost:4503"
+    username: "admin"
+    password: "admin"
+
 dev:
   - url: https://dev-author.example.com
     username: admin
@@ -81,17 +82,6 @@ prod:
 
 ## Usage
 
-### Running the Server
-
-Start the MCP server:
-```bash
-npm start
-```
-
-For development with hot reload:
-```bash
-npm run dev
-```
 
 ### Configuring AI Agents
 
@@ -159,30 +149,7 @@ AI: "Found that the custom SearchService component has 1,247 unclosed sessions. 
 AI: "Component restarted. Memory usage dropping to 45%. I recommend reviewing the SearchService code to ensure sessions are properly closed in finally blocks."
 ```
 
-### Example 3: Configuration Issues After Environment Migration
-
-**Problem**: After migrating configurations from development to production, certain features are not working despite configs being present in /apps.
-
-**AI Agent Interaction**:
-```
-User: "We migrated our configs from dev to prod but the workflow launcher isn't working even though the config exists."
-
-AI: "I'll investigate the configuration status across your environments. Let me first check the production configuration."
-[Uses aem_configuration_list on prod environment]
-
-AI: "The workflow launcher config exists but appears to be bound to a different runmode. Let me compare with dev."
-[Uses aem_configuration_get for specific PID on both environments]
-
-AI: "Found the issue: The production config has runmode 'author' but your instance is 'author,prod'. Let me update it."
-[Uses aem_configuration_update with correct runmode binding]
-
-AI: "Configuration updated. Let me verify the workflow launcher is now active."
-[Uses aem_component_details to check workflow launcher status]
-
-AI: "Workflow launcher is now active. The issue was a runmode mismatch in the configuration binding."
-```
-
-### Example 4: Bulk Operations Across Multiple Instances
+### Example 3: Bulk Operations Across Multiple Instances
 
 **Problem**: Need to disable a problematic component across all environments quickly to prevent service disruption.
 
@@ -267,13 +234,6 @@ The configuration file supports:
 - Instance groups (aliases) for managing multiple instances
 - Environment-based grouping (dev, staging, prod)
 
-## Security Considerations
-
-- Never commit configuration files with credentials
-- Use environment variables or secure credential stores in production
-- Ensure MCP server access is properly restricted
-- Use HTTPS for production AEM instances
-- Implement proper authentication and authorization
 
 ## License
 
@@ -281,9 +241,4 @@ MIT
 
 ## Author
 
-Arkadiusz Rosiak
-
-## Acknowledgments
-
-- Built with [Model Context Protocol SDK](https://github.com/modelcontextprotocol/sdk)
-- Designed for Adobe Experience Manager (AEM)
+[Arkadiusz Rosiak](https://www.linkedin.com/in/arkadiusz-rosiak-aem/)
