@@ -22,11 +22,10 @@ Model Context Protocol (MCP) is an open protocol that enables seamless communica
 ### Prerequisites
 
 - Node.js >= 18.0.0
-- npm or yarn
+- npm
 - Access to AEM instance(s)
 
 ### Setup
-
 
 #### From sources 
 
@@ -85,6 +84,26 @@ prod:
 
 ### Configuring AI Agents
 
+#### Claude Code Configuration
+
+For Claude Code users, you can configure this MCP server using these commands:
+
+```bash
+# Add the AEM MCP server to Claude Code
+claude-code mcp add aem-mcp node /path/to/aem-mcp/dist/server.js
+
+# Set environment variable for configuration file location
+claude-code mcp env aem-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
+
+# List configured MCP servers
+claude-code mcp list
+
+# Remove the server if needed
+claude-code mcp remove aem-mcp
+```
+
+#### Claude Desktop Configuration
+
 To use with Claude Desktop or other MCP-compatible AI assistants, add the server to your MCP configuration:
 
 ```json
@@ -100,6 +119,61 @@ To use with Claude Desktop or other MCP-compatible AI assistants, add the server
   }
 }
 ```
+
+#### Warp Terminal Configuration
+
+For Warp terminal users, you can configure the MCP server through the Warp settings:
+
+1. Open Warp terminal
+2. Press `Cmd/Ctrl + ,` to open settings
+3. Navigate to "Features" → "AI Assistant"
+4. Add MCP server configuration:
+
+```json
+{
+  "mcpServers": {
+    "aem-mcp": {
+      "command": "node",
+      "args": ["/absolute/path/to/aem-mcp/dist/server.js"],
+      "env": {
+        "AEM_INSTANCES_CONFIG_PATH": "/absolute/path/to/aem-instances.yaml"
+      }
+    }
+  }
+}
+```
+
+**Note**: Make sure to use absolute paths in Warp configuration.
+
+## Security & Privacy
+
+### Credential Handling
+
+**Important for developers**: Understanding credential visibility in this MCP server:
+
+- **Direct Instances**: When you provide instance configuration directly in tool calls (with URL, username, password), the LLM **CAN SEE** these credentials as they are part of the tool call parameters
+- **Aliases (Recommended)**: When using aliases from your configuration file, the LLM only sees alias names (e.g., "local", "dev") - actual credentials are read directly by the MCP server from your local configuration file, keeping them invisible to the LLM
+- **Local Storage**: All credentials are stored locally in your `~/aem-instances.yaml` file and never transmitted to external services
+- **Secure Communication**: The MCP server runs locally and communicates directly with your AEM instances using HTTPS
+
+**Security Recommendations**:
+- **Always use aliases instead of direct instance configuration** to keep credentials invisible to the LLM
+- Store configuration file outside of version control
+- Use service accounts with minimal required permissions
+- Regularly rotate passwords for AEM service accounts
+
+## Configuration
+
+### Environment Variables
+
+- `AEM_INSTANCES_CONFIG_PATH` - Path to AEM instances configuration file (default: `~/aem-instances.yaml`)
+
+### Instance Configuration
+
+The configuration file supports:
+- Direct instance definitions with URL, username, and password
+- Instance groups (aliases) for managing multiple instances
+- Environment-based grouping (dev, staging, prod)
 
 ## Real-World Examples
 
@@ -126,7 +200,7 @@ AI: "Dependency started successfully. Now attempting to start your core bundle."
 AI: "All bundles are now active. The issue was a missing dependency that needed to be started first."
 ```
 
-### Example 2: Memory Issues Due to Unclosed JCR Sessions
+### Example 2: Memory Issues and Code Fix for Unclosed JCR Sessions
 
 **Problem**: AEM instance is experiencing memory issues and slowdowns, logs show "CacheManager: resizeAll" warnings.
 
@@ -143,10 +217,62 @@ AI: "I see multiple 'CacheManager: resizeAll' entries indicating unclosed JCR se
 AI: "Memory usage is at 89%. Let me search for the components that might be leaking sessions."
 [Uses aem_groovy_execute with a script to find unclosed sessions]
 
-AI: "Found that the custom SearchService component has 1,247 unclosed sessions. Let me restart it to clear the leaked sessions."
+AI: "Found that the custom SearchService component has 1,247 unclosed sessions. Let me examine the code to identify the root cause."
+[Reads the SearchService.java file]
+
+AI: "I found the problem in your SearchService code. Here are the issues:
+
+**Issues Found:**
+1. Line 34: JCR Session opened but never closed in finally block
+2. Line 52: ResourceResolver not properly closed
+3. Line 78: Exception handling doesn't close sessions on error
+
+Let me fix these issues:
+
+// BEFORE (problematic code):
+public void searchContent(String query) {
+    Session session = repository.loginService("searchservice", null);
+    ResourceResolver resolver = resolverFactory.getResourceResolver(authInfo);
+    
+    // Search logic here...
+    QueryManager qm = session.getWorkspace().getQueryManager();
+    Query q = qm.createQuery(query, Query.XPATH);
+    // Sessions never closed - MEMORY LEAK!
+}
+
+// AFTER (fixed code):
+public void searchContent(String query) {
+    Session session = null;
+    ResourceResolver resolver = null;
+    
+    try {
+        session = repository.loginService("searchservice", null);
+        resolver = resolverFactory.getResourceResolver(authInfo);
+        
+        // Search logic here...
+        QueryManager qm = session.getWorkspace().getQueryManager();
+        Query q = qm.createQuery(query, Query.JCR_SQL2); // Also improved query type
+        
+    } catch (Exception e) {
+        log.error("Search failed", e);
+    } finally {
+        if (resolver != null && resolver.isLive()) {
+            resolver.close();
+        }
+        if (session != null && session.isLive()) {
+            session.logout();
+        }
+    }
+}
+
+
+Now let me restart the component to apply these changes and clear existing leaked sessions."
 [Uses aem_component_disable then aem_component_enable]
 
-AI: "Component restarted. Memory usage dropping to 45%. I recommend reviewing the SearchService code to ensure sessions are properly closed in finally blocks."
+AI: "Component restarted successfully. Let me monitor the system to confirm the fix worked."
+[Uses aem_health_check and aem_logs_search to verify improvements]
+
+AI: "Excellent! Memory usage dropped from 89% to 42%. No more 'CacheManager: resizeAll' warnings appearing. Your SearchService now properly manages JCR resources and won't leak memory."
 ```
 
 ### Example 3: Bulk Operations Across Multiple Instances
@@ -220,20 +346,6 @@ The project follows a layered architecture:
 - **Types**: TypeScript definitions with factory functions (`src/types/`)
 - **Schemas**: Zod validation schemas (`src/schemas/`)
 - **Utils**: Shared utilities (`src/utils/`)
-
-## Configuration
-
-### Environment Variables
-
-- `AEM_INSTANCES_CONFIG_PATH` - Path to AEM instances configuration file (default: `~/aem-instances.yaml`)
-
-### Instance Configuration
-
-The configuration file supports:
-- Direct instance definitions with URL, username, and password
-- Instance groups (aliases) for managing multiple instances
-- Environment-based grouping (dev, staging, prod)
-
 
 ## License
 
