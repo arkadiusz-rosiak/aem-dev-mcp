@@ -76,10 +76,34 @@ local:
 ## MCP Tools Available
 
 The server provides these MCP tools for AEM management:
+
+### System & Monitoring
 - `aem_health_check` - Comprehensive system health monitoring
-- `aem_bundle_*` - OSGi bundle operations (list, start, stop, refresh, etc.)
-- `aem_component_*` - OSGi component management
-- `aem_configuration_*` - OSGi configuration CRUD operations
+- `aem_logs_search` - Search and analyze AEM logs with regex patterns and pagination
+- `aem_groovy_execute` - Execute Groovy scripts on AEM instances for advanced operations
+
+### OSGi Bundle Management
+- `aem_bundle_list` - List all OSGi bundles with filtering options
+- `aem_bundle_start` - Start stopped bundles
+- `aem_bundle_stop` - Stop running bundles
+- `aem_bundle_refresh` - Refresh bundle packages
+- `aem_bundle_restart` - Restart bundles (stop then start)
+- `aem_bundle_uninstall` - Uninstall bundles from the system
+- `aem_bundle_details` - Get detailed information about specific bundles
+
+### OSGi Component Management
+- `aem_component_list` - List all OSGi components with filtering
+- `aem_component_enable` - Enable disabled components
+- `aem_component_disable` - Disable active components
+- `aem_component_details` - Get detailed component information
+
+### OSGi Configuration Management
+- `aem_configuration_list` - List all OSGi configurations
+- `aem_configuration_get` - Retrieve specific configuration details
+- `aem_configuration_create` - Create new configurations
+- `aem_configuration_update` - Update existing configurations
+- `aem_configuration_delete` - Delete configurations
+- `aem_configuration_unbind` - Unbind factory configurations
 
 All tools support both direct instance configuration and alias-based instance groups, with parallel execution across multiple AEM instances.
 
