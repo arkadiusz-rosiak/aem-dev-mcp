@@ -230,6 +230,56 @@ The configuration file supports:
 - Instance groups (aliases) for managing multiple instances
 - Environment-based grouping (dev, staging, prod)
 
+## Available MCP Tools
+
+### System & Monitoring
+- `aem_health_check` - Comprehensive system health monitoring
+- `aem_logs_search` - Search and analyze AEM logs with regex patterns
+- `aem_groovy_execute` - Execute Groovy scripts for advanced operations
+
+### OSGi Bundle Management
+- `aem_bundle_list` - List all OSGi bundles with filtering
+- `aem_bundle_start` - Start stopped bundles
+- `aem_bundle_stop` - Stop running bundles
+- `aem_bundle_refresh` - Refresh bundle packages
+- `aem_bundle_restart` - Restart bundles
+- `aem_bundle_uninstall` - Uninstall bundles
+- `aem_bundle_details` - Get detailed bundle information
+
+### OSGi Component Management
+- `aem_component_list` - List all OSGi components
+- `aem_component_enable` - Enable disabled components
+- `aem_component_disable` - Disable active components
+- `aem_component_details` - Get detailed component information
+
+### OSGi Configuration Management
+- `aem_configuration_list` - List all OSGi configurations
+- `aem_configuration_get` - Retrieve specific configuration
+- `aem_configuration_create` - Create new configurations
+- `aem_configuration_update` - Update existing configurations
+- `aem_configuration_delete` - Delete configurations
+- `aem_configuration_unbind` - Unbind factory configurations
+
+## Development
+
+### Commands
+
+- `npm run dev` - Start development server with hot reload
+- `npm run build` - Build TypeScript with path aliases
+- `npm run typecheck` - Type check without building
+- `npm run lint` - Run ESLint
+- `npm run test` - Run Jest tests
+- `npm run test:coverage` - Run tests with coverage report
+
+### Architecture
+
+The project follows a layered architecture:
+- **Handlers**: MCP tool entry points (`src/handlers/`)
+- **Services**: Business logic and AEM API communication (`src/services/`)
+- **Types**: TypeScript definitions with factory functions (`src/types/`)
+- **Schemas**: Zod validation schemas (`src/schemas/`)
+- **Utils**: Shared utilities (`src/utils/`)
+
 ## Real-World Examples
 
 ### Example 1: Troubleshooting Inactive OSGi Bundles
@@ -351,56 +401,6 @@ AI: "Component disabled on all 6 instances:
 
 All instances processed in 2.3 seconds. The problematic component is now safely disabled across your entire infrastructure."
 ```
-
-## Available MCP Tools
-
-### System & Monitoring
-- `aem_health_check` - Comprehensive system health monitoring
-- `aem_logs_search` - Search and analyze AEM logs with regex patterns
-- `aem_groovy_execute` - Execute Groovy scripts for advanced operations
-
-### OSGi Bundle Management
-- `aem_bundle_list` - List all OSGi bundles with filtering
-- `aem_bundle_start` - Start stopped bundles
-- `aem_bundle_stop` - Stop running bundles
-- `aem_bundle_refresh` - Refresh bundle packages
-- `aem_bundle_restart` - Restart bundles
-- `aem_bundle_uninstall` - Uninstall bundles
-- `aem_bundle_details` - Get detailed bundle information
-
-### OSGi Component Management
-- `aem_component_list` - List all OSGi components
-- `aem_component_enable` - Enable disabled components
-- `aem_component_disable` - Disable active components
-- `aem_component_details` - Get detailed component information
-
-### OSGi Configuration Management
-- `aem_configuration_list` - List all OSGi configurations
-- `aem_configuration_get` - Retrieve specific configuration
-- `aem_configuration_create` - Create new configurations
-- `aem_configuration_update` - Update existing configurations
-- `aem_configuration_delete` - Delete configurations
-- `aem_configuration_unbind` - Unbind factory configurations
-
-## Development
-
-### Commands
-
-- `npm run dev` - Start development server with hot reload
-- `npm run build` - Build TypeScript with path aliases
-- `npm run typecheck` - Type check without building
-- `npm run lint` - Run ESLint
-- `npm run test` - Run Jest tests
-- `npm run test:coverage` - Run tests with coverage report
-
-### Architecture
-
-The project follows a layered architecture:
-- **Handlers**: MCP tool entry points (`src/handlers/`)
-- **Services**: Business logic and AEM API communication (`src/services/`)
-- **Types**: TypeScript definitions with factory functions (`src/types/`)
-- **Schemas**: Zod validation schemas (`src/schemas/`)
-- **Utils**: Shared utilities (`src/utils/`)
 
 ## License
 
