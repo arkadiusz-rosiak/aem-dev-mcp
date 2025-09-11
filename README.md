@@ -1,10 +1,6 @@
-# AEM MCP Server
+# AEM DEV MCP Server
 
 A TypeScript-based Model Context Protocol (MCP) server that provides connectivity tools for Adobe Experience Manager (AEM) instances. This server enables AI agents to interact with AEM systems, manage OSGi bundles and configurations, monitor health, and troubleshoot common issues.
-
-## What is MCP?
-
-Model Context Protocol (MCP) is an open protocol that enables seamless communication between AI assistants and external systems. By implementing MCP, this server allows AI agents like Claude to directly interact with your AEM instances, automating routine tasks and providing intelligent troubleshooting capabilities.
 
 ## Features
 
