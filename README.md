@@ -31,8 +31,8 @@ Model Context Protocol (MCP) is an open protocol that enables seamless communica
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/arkadiusz-rosiak/aem-mcp.git
-cd aem-mcp
+git clone https://github.com/arkadiusz-rosiak/aem-dev-mcp.git
+cd aem-dev-mcp
 ```
 
 2. Install dependencies:
@@ -90,16 +90,16 @@ For Claude Code users, you can configure this MCP server using these commands:
 
 ```bash
 # Add the AEM MCP server to Claude Code
-claude-code mcp add aem-mcp node /path/to/aem-mcp/dist/server.js
+claude-code mcp add aem-dev-mcp node /path/to/aem-dev-mcp/dist/server.js
 
 # Set environment variable for configuration file location
-claude-code mcp env aem-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
+claude-code mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
 
 # List configured MCP servers
 claude-code mcp list
 
 # Remove the server if needed
-claude-code mcp remove aem-mcp
+claude-code mcp remove aem-dev-mcp
 ```
 
 #### Claude Desktop Configuration
@@ -109,9 +109,9 @@ To use with Claude Desktop or other MCP-compatible AI assistants, add the server
 ```json
 {
   "mcpServers": {
-    "aem-mcp": {
+    "aem-dev-mcp": {
       "command": "node",
-      "args": ["/path/to/aem-mcp/dist/server.js"],
+      "args": ["/path/to/aem-dev-mcp/dist/server.js"],
       "env": {
         "AEM_INSTANCES_CONFIG_PATH": "/path/to/aem-instances.yaml"
       }
@@ -132,9 +132,9 @@ For Warp terminal users, you can configure the MCP server through the Warp setti
 ```json
 {
   "mcpServers": {
-    "aem-mcp": {
+    "aem-dev-mcp": {
       "command": "node",
-      "args": ["/absolute/path/to/aem-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/aem-dev-mcp/dist/server.js"],
       "env": {
         "AEM_INSTANCES_CONFIG_PATH": "/absolute/path/to/aem-instances.yaml"
       }

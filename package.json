@@ -1,5 +1,5 @@
 {
-  "name": "aem-mcp-server",
+  "name": "aem-dev-mcp-server",
   "version": "1.0.0",
   "type": "module",
   "description": "AEM MCP server providing connectivity tools for Adobe Experience Manager® instances",
