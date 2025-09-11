@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { InstanceSelectionSchema } from '@/schemas/osgi.schemas.js';
+import { InstanceSelectionBaseSchema } from '@/schemas/osgi.schemas.js';
 
 export const LogTypeSchema = z.enum([
   'application_errors',
@@ -22,7 +22,7 @@ const validateRegexPattern = (pattern: string): boolean => {
   }
 };
 
-export const AemLogsSearchInputSchema = InstanceSelectionSchema.extend({
+export const AemLogsSearchInputSchema = InstanceSelectionBaseSchema.extend({
   regex: z.string()
     .min(1, 'Regex pattern is required')
     .refine(validateRegexPattern, {
@@ -30,7 +30,13 @@ export const AemLogsSearchInputSchema = InstanceSelectionSchema.extend({
     }),
   log_type: LogTypeSchema.default('application_errors'),
   page: z.number().int().min(1, 'Page number must be at least 1').default(1)
-});
+}).refine(
+  (data) => data.aliases || data.instances,
+  { 
+    message: "Either 'aliases' or 'instances' must be provided",
+    path: ['aliases', 'instances']
+  }
+);
 
 export const PaginationMetadataSchema = z.object({
   current_page: z.number().int().min(1),
