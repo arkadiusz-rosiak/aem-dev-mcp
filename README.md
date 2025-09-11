@@ -101,9 +101,6 @@ For Claude Code users, you can configure this MCP server using these commands:
 **Using npm installation (Recommended):**
 ```bash
 # Add the AEM MCP server to Claude Code
-npx aem-dev-mcp-server install
-
-# Or manually:
 claude-code mcp add aem-dev-mcp npx aem-dev-mcp-server
 
 # Set environment variable for configuration file location

@@ -1,9 +1,12 @@
 {
   "name": "aem-dev-mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "AEM MCP server providing connectivity tools for Adobe Experience Manager® instances",
   "main": "dist/server.js",
+  "bin": {
+    "aem-dev-mcp-server": "./bin/cli.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/arkadiusz-rosiak/aem-dev-mcp.git"
