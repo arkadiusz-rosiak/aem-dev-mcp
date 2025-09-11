@@ -1,5 +1,5 @@
 import { z } from 'zod';
-
+import { InstanceSelectionSchema } from '@/schemas/instance.schemas.js';
 
 export const BundleStateSchema = z.enum([
   'Active',
@@ -37,22 +37,6 @@ export const ConfigPropertySchema = z.object({
   description: z.string().optional()
 });
 
-export const AEMInstanceSchema = z.object({
-  url: z.string().url('Invalid URL format'),
-  username: z.string().min(1, 'Username cannot be empty'),
-  password: z.string().min(1, 'Password cannot be empty')
-});
-
-export const InstanceSelectionSchema = z.object({
-  aliases: z.array(z.string().min(1, 'Alias cannot be empty')).optional(),
-  instances: z.array(AEMInstanceSchema).optional()
-}).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-);
 
 export const BundleListSchema = InstanceSelectionSchema.safeExtend({
   stateFilter: BundleStateSchema.optional(),

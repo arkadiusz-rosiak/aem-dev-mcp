@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { InstanceSelectionSchema } from '@/schemas/osgi.schemas.js';
+import { InstanceSelectionSchema } from '@/schemas/instance.schemas.js';
 
 export const LogTypeSchema = z.enum([
   'application_errors',
