@@ -101,28 +101,28 @@ For Claude Code users, you can configure this MCP server using these commands:
 **Using npm installation (Recommended):**
 ```bash
 # Add the AEM MCP server to Claude Code
-claude-code mcp add aem-dev-mcp npx aem-dev-mcp-server
+claude mcp add aem-dev-mcp npx aem-dev-mcp-server
 
 # Set environment variable for configuration file location
-claude-code mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
+claude mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
 ```
 
 **Using local build:**
 ```bash
 # Add the AEM MCP server to Claude Code
-claude-code mcp add aem-dev-mcp node /path/to/aem-dev-mcp/dist/server.js
+claude mcp add aem-dev-mcp node /path/to/aem-dev-mcp/dist/server.js
 
 # Set environment variable for configuration file location
-claude-code mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
+claude mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
 ```
 
 **Common commands:**
 ```bash
 # List configured MCP servers
-claude-code mcp list
+claude mcp list
 
 # Remove the server if needed
-claude-code mcp remove aem-dev-mcp
+claude- mcp remove aem-dev-mcp
 ```
 
 #### Claude Desktop Configuration
