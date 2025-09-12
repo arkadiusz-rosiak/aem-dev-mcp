@@ -1,0 +1,23 @@
+# Example AEM instances configuration
+# Copy this file to ~/aem-instances.yaml and update with your credentials
+
+# Local development environment
+local:
+  - url: http://localhost:4502
+    username: admin
+    password: admin
+  - url: http://localhost:4503
+    username: admin
+    password: admin
+
+# Development environment example
+dev:
+  - url: https://aem-dev-author.example.com
+    username: admin
+    password: changeme
+  - url: https://aem-dev-publish1.example.com
+    username: admin
+    password: changeme
+  - url: https://aem-dev-publish2.example.com
+    username: admin
+    password: changeme
