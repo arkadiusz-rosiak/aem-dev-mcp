@@ -30,12 +30,9 @@ A TypeScript-based Model Context Protocol (MCP) server that provides connectivit
 npm install -g aem-dev-mcp-server
 ```
 
-2. Create configuration file for your AEM instances:
-```bash
-touch ~/aem-instances.yaml
-```
+2. During installation, an example configuration file will be automatically created at `~/aem-instances.yaml` if it doesn't already exist
 
-3. Configure your AEM instances in `~/aem-instances.yaml` (see configuration example below)
+3. Configure your AEM instances in `~/aem-instances.yaml` with your actual server details (see configuration example below, or check `examples/aem-instances.example.yaml` in the installed package)
 
 #### From sources
 
@@ -50,17 +47,14 @@ cd aem-dev-mcp
 npm install
 ```
 
-3. Build the project:
+3. During installation, an example configuration file will be automatically created at `~/aem-instances.yaml` if it doesn't already exist
+
+4. Build the project:
 ```bash
 npm run build
 ```
 
-4. Create configuration file for your AEM instances:
-```bash
-touch ~/aem-instances.yaml
-```
-
-5. Configure your AEM instances in `~/aem-instances.yaml`:
+5. Configure your AEM instances in `~/aem-instances.yaml` with your actual server details (you can also check `examples/aem-instances.example.yaml` for reference):
 ```yaml
 
 # Instance groups for different environments
@@ -87,6 +81,27 @@ prod:
   - url: https://prod-publish.example.com
     username: admin
     password: prodpass
+```
+
+### First-Run Setup
+
+When you install the AEM MCP Server (either via npm or from sources), a postinstall script automatically runs to improve your setup experience:
+
+- **Automatic Configuration**: If `~/aem-instances.yaml` doesn't exist, the script automatically copies the example configuration from `examples/aem-instances.example.yaml` 
+- **Safe Setup**: Existing configurations are never overwritten - your settings are always preserved
+- **Clear Feedback**: The script provides clear console output about what actions were taken
+- **Ready to Use**: After installation, you can immediately start using the server by updating the configuration with your AEM credentials
+
+**Example output during fresh installation:**
+```
+🔧 AEM MCP Server - First-run setup...
+✓ Created default configuration at ~/aem-instances.yaml
+  Please update it with your AEM instance credentials.
+
+📖 Next steps:
+  1. Edit ~/aem-instances.yaml with your AEM server details
+  2. Replace "changeme" passwords with actual credentials
+  3. Remove or comment out environments you don't need
 ```
 
 ## Usage
@@ -218,6 +233,13 @@ For Warp terminal users, you can configure the MCP server through the Warp setti
 - Regularly rotate passwords for AEM service accounts
 
 ## Configuration
+
+### Automatic Setup
+
+The AEM MCP Server includes automatic first-run setup:
+- Example configuration is automatically copied to `~/aem-instances.yaml` during installation
+- No manual file creation needed - just install and configure your credentials
+- Example configuration template available at `examples/aem-instances.example.yaml`
 
 ### Environment Variables
 
