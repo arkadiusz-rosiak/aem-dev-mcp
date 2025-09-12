@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { InstanceSelectionSchema } from '@/schemas/osgi.schemas.js';
+import { InstanceSelectionSchema } from '@/schemas/instance.schemas.js';
 
 export const LogTypeSchema = z.enum([
   'application_errors',
@@ -22,7 +22,7 @@ const validateRegexPattern = (pattern: string): boolean => {
   }
 };
 
-export const AemLogsSearchInputSchema = InstanceSelectionSchema.extend({
+export const AemLogsSearchInputSchema = InstanceSelectionSchema.safeExtend({
   regex: z.string()
     .min(1, 'Regex pattern is required')
     .refine(validateRegexPattern, {

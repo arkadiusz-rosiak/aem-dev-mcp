@@ -260,7 +260,7 @@ describe('Bundle Management Handlers', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Bundle list failed');
-      expect(result.content[0].text).toContain('No instances to check after resolution');
+      expect(result.content[0].text).toContain('Validation failed: aliases.instances: Either \'aliases\' or \'instances\' must be provided');
     });
 
     it('should handle executor failures gracefully', async () => {
