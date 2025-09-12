@@ -137,7 +137,7 @@ claude mcp env aem-dev-mcp AEM_INSTANCES_CONFIG_PATH=/path/to/aem-instances.yaml
 claude mcp list
 
 # Remove the server if needed
-claude- mcp remove aem-dev-mcp
+claude mcp remove aem-dev-mcp
 ```
 
 #### Claude Desktop Configuration
