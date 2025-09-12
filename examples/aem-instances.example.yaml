@@ -1,0 +1,62 @@
+# Example AEM instances configuration
+# Copy this file to ~/aem-instances.yaml and update with your credentials
+#
+# IMPORTANT SECURITY NOTE:
+# This file contains sensitive credentials - ensure proper access controls
+# Never commit actual credentials to version control
+
+# Local development environment
+# Typical AEM SDK setup with author and publish instances
+local:
+  - url: http://localhost:4502
+    username: admin
+    password: admin
+  - url: http://localhost:4503
+    username: admin
+    password: admin
+
+# Development environment example
+# Replace with your actual development server URLs and credentials
+dev:
+  - url: https://aem-dev-author.example.com
+    username: admin
+    password: changeme
+  - url: https://aem-dev-publish1.example.com
+    username: admin
+    password: changeme
+  - url: https://aem-dev-publish2.example.com
+    username: admin
+    password: changeme
+
+# Staging environment example
+# Configure your staging instances here
+staging:
+  - url: https://aem-stage-author.example.com
+    username: admin
+    password: changeme
+
+# Production environment example (use with caution!)
+# Only include production if you need to manage production instances
+# Consider using separate configuration files for production
+prod:
+  - url: https://aem-prod-author.example.com
+    username: admin
+    password: changeme
+  - url: https://aem-prod-publish1.example.com
+    username: admin
+    password: changeme
+
+# Custom environment groupings
+# You can create any alias names that suit your workflow
+integration-test:
+  - url: https://int-author-1.company.com:4502
+    username: admin
+    password: int-password
+
+load-test:
+  - url: https://int-publish-1.company.com:4503
+    username: admin
+    password: int-password
+  - url: https://int-publish-2.company.com:4503
+    username: admin
+    password: int-password
