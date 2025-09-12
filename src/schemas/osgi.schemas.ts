@@ -50,12 +50,6 @@ export const BundleOperationSchema = InstanceSelectionSchema.safeExtend({
   symbolicName: z.string().optional(),
   action: z.enum(['start', 'stop', 'uninstall', 'refresh'])
 }).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-).refine(
   (data) => data.bundleId || data.symbolicName,
   {
     message: "Either 'bundleId' or 'symbolicName' must be provided",
@@ -67,12 +61,6 @@ export const BundleIdentifierSchema = InstanceSelectionSchema.safeExtend({
   bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
   symbolicName: z.string().optional()
 }).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-).refine(
   (data) => data.bundleId || data.symbolicName,
   {
     message: "Either 'bundleId' or 'symbolicName' must be provided",
@@ -84,12 +72,6 @@ export const BundleDetailsSchema = InstanceSelectionSchema.safeExtend({
   bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
   symbolicName: z.string().optional()
 }).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-).refine(
   (data) => data.bundleId || data.symbolicName,
   {
     message: "Either 'bundleId' or 'symbolicName' must be provided",
@@ -104,12 +86,6 @@ export const BundleInstallSchema = InstanceSelectionSchema.safeExtend({
   start: z.boolean().default(true),
   refresh: z.boolean().default(false)
 }).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-).refine(
   (data) => data.bundleUrl || data.bundleFile,
   {
     message: "Either 'bundleUrl' or 'bundleFile' must be provided",
@@ -130,12 +106,6 @@ export const ComponentOperationSchema = InstanceSelectionSchema.safeExtend({
   componentName: z.string().optional(),
   action: z.enum(['enable', 'disable'])
 }).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-).refine(
   (data) => data.componentId || data.componentName,
   {
     message: "Either 'componentId' or 'componentName' must be provided",
@@ -147,12 +117,6 @@ export const ComponentIdentifierSchema = InstanceSelectionSchema.safeExtend({
   componentId: z.number().int().positive('Component ID must be positive').optional(),
   componentName: z.string().optional()
 }).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-).refine(
   (data) => data.componentId || data.componentName,
   {
     message: "Either 'componentId' or 'componentName' must be provided",

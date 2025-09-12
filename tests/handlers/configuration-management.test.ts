@@ -213,7 +213,7 @@ describe('Configuration Management Handlers', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Configuration list failed');
-      expect(result.content[0].text).toContain('No instances to check after resolution');
+      expect(result.content[0].text).toContain('Validation failed: aliases.instances: Either \'aliases\' or \'instances\' must be provided');
     });
   });
 
