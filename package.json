@@ -1,9 +1,20 @@
 {
-  "name": "aem-mcp-server",
-  "version": "1.0.0",
+  "name": "aem-dev-mcp-server",
+  "version": "1.0.3",
   "type": "module",
   "description": "AEM MCP server providing connectivity tools for Adobe Experience Manager® instances",
   "main": "dist/server.js",
+  "bin": {
+    "aem-dev-mcp-server": "./bin/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arkadiusz-rosiak/aem-dev-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arkadiusz-rosiak/aem-dev-mcp/issues"
+  },
+  "homepage": "https://github.com/arkadiusz-rosiak/aem-dev-mcp#readme",
   "scripts": {
     "build": "tsc && tsc-alias",
     "start": "node dist/server.js",
@@ -13,12 +24,14 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.1",
     "axios": "^1.11.0",
     "js-yaml": "^4.1.0",
+    "tiktoken": "^1.0.19",
     "uuid": "^11.1.0",
     "zod": "^4.0.14"
   },

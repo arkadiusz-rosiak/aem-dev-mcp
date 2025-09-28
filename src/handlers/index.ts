@@ -4,6 +4,7 @@ import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { handleHealthCheck, healthCheckTool } from './health-check.js';
+import { handleGroovyExecute, groovyExecuteTool } from './groovy-execute.js';
 import { 
   handleBundleList, 
   handleBundleStart,
@@ -44,7 +45,7 @@ import {
   configurationDeleteTool,
   configurationUnbindTool
 } from './configuration-management.js';
-import { 
+import {
   handleUserProvisioning,
   handleUserDeprovisioning,
   handlePasswordReset,
@@ -54,7 +55,7 @@ import {
   passwordResetTool,
   bulkUserUpdateTool
 } from './user-management.js';
-import { 
+import {
   handleGroupSync,
   handlePermissionGrant,
   handleMembershipUpdate,
@@ -62,7 +63,7 @@ import {
   permissionGrantTool,
   membershipUpdateTool
 } from './group-management.js';
-import { 
+import {
   handleTrustStoreList,
   handleTrustStoreExport,
   handleTrustStoreSync,
@@ -70,6 +71,10 @@ import {
   trustStoreExportTool,
   trustStoreSyncTool
 } from './trust-store-management.js';
+import {
+  handleAemLogsSearch,
+  aemLogsSearchTool
+} from './aem-logs.handler.js';
 import { getDefaultLogger } from '@/utils/logger.js';
 import { extractErrorMessage } from '@/utils/errors.js';
 
@@ -83,6 +88,7 @@ export function registerHandlers(server: Server, configPath: string): void {
     return {
       tools: [
         healthCheckTool,
+        groovyExecuteTool,
         bundleListTool,
         bundleStartTool,
         bundleStopTool,
@@ -109,7 +115,8 @@ export function registerHandlers(server: Server, configPath: string): void {
         membershipUpdateTool,
         trustStoreListTool,
         trustStoreExportTool,
-        trustStoreSyncTool
+        trustStoreSyncTool,
+        aemLogsSearchTool
       ]
     };
   });
@@ -123,6 +130,9 @@ export function registerHandlers(server: Server, configPath: string): void {
       switch (name) {
         case 'aem_health_check':
           result = await handleHealthCheck(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_groovy_execute':
+          result = await handleGroovyExecute(args, aliasResolver, parallelExecutor, httpClient);
           break;
         case 'aem_bundle_list':
           result = await handleBundleList(args, aliasResolver, parallelExecutor, httpClient);
@@ -204,6 +214,9 @@ export function registerHandlers(server: Server, configPath: string): void {
           break;
         case 'aem_trust_store_sync':
           result = await handleTrustStoreSync(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_logs_search':
+          result = await handleAemLogsSearch(args, aliasResolver, parallelExecutor, httpClient);
           break;
         default:
           throw new Error(`Unknown tool: ${name}`);

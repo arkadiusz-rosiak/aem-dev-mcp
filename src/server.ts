@@ -15,7 +15,7 @@ export class McpAemServer {
     this.logger = createLogger();
     this.server = new Server(
       {
-        name: 'aem-mcp-server',
+        name: 'aem-dev-mcp-server',
         version: '1.0.0',
       },
       {

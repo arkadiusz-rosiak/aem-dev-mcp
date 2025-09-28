@@ -1,5 +1,5 @@
 import { z } from 'zod';
-
+import { InstanceSelectionSchema } from '@/schemas/instance.schemas.js';
 
 export const BundleStateSchema = z.enum([
   'Active',
@@ -37,31 +37,15 @@ export const ConfigPropertySchema = z.object({
   description: z.string().optional()
 });
 
-export const AEMInstanceSchema = z.object({
-  url: z.string().url('Invalid URL format'),
-  username: z.string().min(1, 'Username cannot be empty'),
-  password: z.string().min(1, 'Password cannot be empty')
-});
 
-export const InstanceSelectionSchema = z.object({
-  aliases: z.array(z.string().min(1, 'Alias cannot be empty')).optional(),
-  instances: z.array(AEMInstanceSchema).optional()
-}).refine(
-  (data) => data.aliases || data.instances,
-  { 
-    message: "Either 'aliases' or 'instances' must be provided",
-    path: ['aliases', 'instances']
-  }
-);
-
-export const BundleListSchema = InstanceSelectionSchema.extend({
+export const BundleListSchema = InstanceSelectionSchema.safeExtend({
   stateFilter: BundleStateSchema.optional(),
   nameFilter: z.string().optional(),
   limit: z.number().int().min(1).max(1000).optional().default(100),
   offset: z.number().int().min(0).optional().default(0)
 });
 
-export const BundleOperationSchema = InstanceSelectionSchema.extend({
+export const BundleOperationSchema = InstanceSelectionSchema.safeExtend({
   bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
   symbolicName: z.string().optional(),
   action: z.enum(['start', 'stop', 'uninstall', 'refresh'])
@@ -73,7 +57,7 @@ export const BundleOperationSchema = InstanceSelectionSchema.extend({
   }
 );
 
-export const BundleIdentifierSchema = InstanceSelectionSchema.extend({
+export const BundleIdentifierSchema = InstanceSelectionSchema.safeExtend({
   bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
   symbolicName: z.string().optional()
 }).refine(
@@ -84,7 +68,7 @@ export const BundleIdentifierSchema = InstanceSelectionSchema.extend({
   }
 );
 
-export const BundleDetailsSchema = InstanceSelectionSchema.extend({
+export const BundleDetailsSchema = InstanceSelectionSchema.safeExtend({
   bundleId: z.number().int().positive('Bundle ID must be a positive integer').optional(),
   symbolicName: z.string().optional()
 }).refine(
@@ -95,7 +79,7 @@ export const BundleDetailsSchema = InstanceSelectionSchema.extend({
   }
 );
 
-export const BundleInstallSchema = InstanceSelectionSchema.extend({
+export const BundleInstallSchema = InstanceSelectionSchema.safeExtend({
   bundleUrl: z.string().url('Invalid bundle URL').optional(),
   bundleFile: z.instanceof(Buffer).optional(),
   startLevel: z.number().int().min(1).max(100).optional(),
@@ -110,14 +94,14 @@ export const BundleInstallSchema = InstanceSelectionSchema.extend({
 );
 
 
-export const ComponentListSchema = InstanceSelectionSchema.extend({
+export const ComponentListSchema = InstanceSelectionSchema.safeExtend({
   stateFilter: ComponentStateSchema.optional(),
   nameFilter: z.string().optional(),
   limit: z.number().int().min(1).max(1000).optional().default(100),
   offset: z.number().int().min(0).optional().default(0)
 });
 
-export const ComponentOperationSchema = InstanceSelectionSchema.extend({
+export const ComponentOperationSchema = InstanceSelectionSchema.safeExtend({
   componentId: z.number().int().positive('Component ID must be positive').optional(),
   componentName: z.string().optional(),
   action: z.enum(['enable', 'disable'])
@@ -129,7 +113,7 @@ export const ComponentOperationSchema = InstanceSelectionSchema.extend({
   }
 );
 
-export const ComponentIdentifierSchema = InstanceSelectionSchema.extend({
+export const ComponentIdentifierSchema = InstanceSelectionSchema.safeExtend({
   componentId: z.number().int().positive('Component ID must be positive').optional(),
   componentName: z.string().optional()
 }).refine(
@@ -141,17 +125,17 @@ export const ComponentIdentifierSchema = InstanceSelectionSchema.extend({
 );
 
 
-export const ConfigurationListSchema = InstanceSelectionSchema.extend({
+export const ConfigurationListSchema = InstanceSelectionSchema.safeExtend({
   pidFilter: z.string().optional(),
   limit: z.number().int().min(1).max(1000).optional().default(100),
   offset: z.number().int().min(0).optional().default(0)
 });
 
-export const ConfigurationGetSchema = InstanceSelectionSchema.extend({
+export const ConfigurationGetSchema = InstanceSelectionSchema.safeExtend({
   pid: z.string().min(1, 'PID cannot be empty')
 });
 
-export const ConfigurationCreateSchema = InstanceSelectionSchema.extend({
+export const ConfigurationCreateSchema = InstanceSelectionSchema.safeExtend({
   pid: z.string().min(1, 'PID cannot be empty'),
   properties: z.record(z.string(), ConfigPropertySchema)
     .refine(props => Object.keys(props).length > 0, {
@@ -161,7 +145,7 @@ export const ConfigurationCreateSchema = InstanceSelectionSchema.extend({
   bundleLocation: z.string().optional()
 });
 
-export const ConfigurationUpdateSchema = InstanceSelectionSchema.extend({
+export const ConfigurationUpdateSchema = InstanceSelectionSchema.safeExtend({
   pid: z.string().min(1, 'PID cannot be empty'),
   properties: z.record(z.string(), ConfigPropertySchema)
     .refine(props => Object.keys(props).length > 0, {
@@ -171,11 +155,11 @@ export const ConfigurationUpdateSchema = InstanceSelectionSchema.extend({
   bundleLocation: z.string().optional()
 });
 
-export const ConfigurationDeleteSchema = InstanceSelectionSchema.extend({
+export const ConfigurationDeleteSchema = InstanceSelectionSchema.safeExtend({
   pid: z.string().min(1, 'PID cannot be empty')
 });
 
-export const ConfigurationUnbindSchema = InstanceSelectionSchema.extend({
+export const ConfigurationUnbindSchema = InstanceSelectionSchema.safeExtend({
   pid: z.string().min(1, 'PID cannot be empty'),
   bundleLocation: z.string().optional()
 });
