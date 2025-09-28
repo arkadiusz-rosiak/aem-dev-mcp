@@ -1,4 +1,5 @@
-import { OperationResult } from './utility.types.js';
+
+import { OperationResult } from './mcp.types.js';
 
 export interface AEMUser {
   userId: string;
@@ -129,6 +130,10 @@ export interface UserOperationResult {
   instanceUrl: string;
   error?: string;
   generatedPassword?: string;
+  groupAssignmentFailures?: Array<{
+    groupId: string;
+    error: string;
+  }>;
 }
 
 export interface GroupOperationResult {

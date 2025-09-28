@@ -76,20 +76,27 @@ export class UserManagementService {
         throw new Error(`HTTP ${response.status}: ${response.data}`);
       }
 
+      let groupAssignmentFailures: Array<{ groupId: string; error: string }> | undefined;
+
       if (user.groups.length > 0) {
-        await this.addUserToGroups(instance, user.userId, user.groups);
+        const failures = await this.addUserToGroups(instance, user.userId, user.groups);
+        if (failures.length > 0) {
+          groupAssignmentFailures = failures;
+        }
       }
 
-      this.logger.info(`User ${user.userId} created successfully`, { 
+      this.logger.info(`User ${user.userId} created successfully`, {
         instanceUrl: instance.url,
-        userId: user.userId 
+        userId: user.userId,
+        groupAssignmentFailures: groupAssignmentFailures?.length || 0
       });
 
       return {
         userId: user.userId,
         success: true,
         instanceUrl: instance.url,
-        generatedPassword: password ? undefined : userPassword
+        generatedPassword: password ? undefined : userPassword,
+        groupAssignmentFailures
       };
 
     } catch (error) {
@@ -277,47 +284,58 @@ export class UserManagementService {
     const numbers = '0123456789';
     const specialChars = policy.specialChars;
 
-    let charset = '';
-    let password = '';
+    const maxAttempts = 100;
+    let attempts = 0;
 
-    if (policy.requireLowercase) {
-      charset += lowercase;
-      password += lowercase[crypto.randomInt(lowercase.length)];
+    while (attempts < maxAttempts) {
+      attempts++;
+
+      let charset = '';
+      let password = '';
+
+      if (policy.requireLowercase) {
+        charset += lowercase;
+        password += lowercase[crypto.randomInt(lowercase.length)];
+      }
+
+      if (policy.requireUppercase) {
+        charset += uppercase;
+        password += uppercase[crypto.randomInt(uppercase.length)];
+      }
+
+      if (policy.requireNumbers) {
+        charset += numbers;
+        password += numbers[crypto.randomInt(numbers.length)];
+      }
+
+      if (policy.requireSpecialChars) {
+        charset += specialChars;
+        password += specialChars[crypto.randomInt(specialChars.length)];
+      }
+
+      const remainingLength = policy.minLength - password.length;
+      for (let i = 0; i < remainingLength; i++) {
+        password += charset[crypto.randomInt(charset.length)];
+      }
+
+      const passwordArray = password.split('');
+      for (let i = passwordArray.length - 1; i > 0; i--) {
+        const j = crypto.randomInt(i + 1);
+        [passwordArray[i], passwordArray[j]] = [passwordArray[j], passwordArray[i]];
+      }
+
+      const finalPassword = passwordArray.join('');
+
+      const containsForbiddenWord = policy.forbiddenWords.some(word =>
+        finalPassword.toLowerCase().includes(word.toLowerCase())
+      );
+
+      if (!containsForbiddenWord) {
+        return finalPassword;
+      }
     }
 
-    if (policy.requireUppercase) {
-      charset += uppercase;
-      password += uppercase[crypto.randomInt(uppercase.length)];
-    }
-
-    if (policy.requireNumbers) {
-      charset += numbers;
-      password += numbers[crypto.randomInt(numbers.length)];
-    }
-
-    if (policy.requireSpecialChars) {
-      charset += specialChars;
-      password += specialChars[crypto.randomInt(specialChars.length)];
-    }
-
-    const remainingLength = policy.minLength - password.length;
-    for (let i = 0; i < remainingLength; i++) {
-      password += charset[crypto.randomInt(charset.length)];
-    }
-
-    const passwordArray = password.split('');
-    for (let i = passwordArray.length - 1; i > 0; i--) {
-      const j = crypto.randomInt(i + 1);
-      [passwordArray[i], passwordArray[j]] = [passwordArray[j], passwordArray[i]];
-    }
-
-    const finalPassword = passwordArray.join('');
-
-    if (policy.forbiddenWords.some(word => finalPassword.toLowerCase().includes(word.toLowerCase()))) {
-      return this.generateSecurePassword(policy);
-    }
-
-    return finalPassword;
+    throw new Error(`Failed to generate password after ${maxAttempts} attempts. Policy may be too restrictive.`);
   }
 
   createPasswordPolicy(): PasswordPolicy {
@@ -430,7 +448,9 @@ export class UserManagementService {
     }
   }
 
-  private async addUserToGroups(instance: AEMInstance, userId: string, groupIds: string[]): Promise<void> {
+  private async addUserToGroups(instance: AEMInstance, userId: string, groupIds: string[]): Promise<Array<{ groupId: string; error: string }>> {
+    const failures: Array<{ groupId: string; error: string }> = [];
+
     for (const groupId of groupIds) {
       try {
         const formData = new URLSearchParams();
@@ -445,13 +465,17 @@ export class UserManagementService {
           }
         );
       } catch (error) {
-        this.logger.warn(`Failed to add user ${userId} to group ${groupId}`, { 
+        const errorMessage = extractErrorMessage(error);
+        this.logger.warn(`Failed to add user ${userId} to group ${groupId}`, {
           instanceUrl: instance.url,
           userId,
           groupId,
-          error: extractErrorMessage(error) 
+          error: errorMessage
         });
+        failures.push({ groupId, error: errorMessage });
       }
     }
+
+    return failures;
   }
 }

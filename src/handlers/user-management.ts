@@ -2,40 +2,68 @@ import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { UserManagementService } from '@/services/user-management.service.js';
-import { 
-  UserProvisioningRequestSchema, 
+import {
+  UserProvisioningRequestSchema,
   UserDeprovisioningRequestSchema,
   PasswordResetRequestSchema,
   BulkUserUpdateRequestSchema
 } from '@/schemas/security.schemas.js';
-import { 
-  UserProvisioningRequest, 
+import {
+  UserProvisioningRequest,
   UserDeprovisioningRequest,
   PasswordResetRequest,
   BulkUserUpdateRequest,
   UserOperationResult,
   PasswordResetResult
 } from '@/types/security.types.js';
-import { McpToolResponse } from '@/types/mcp.types.js';
+import { MCPToolResult, AEMInstance } from '@/types/index.js';
 import { getDefaultLogger } from '@/utils/logger.js';
 import { extractErrorMessage } from '@/utils/errors.js';
 
 const logger = getDefaultLogger();
+
+async function resolveInstances(
+  instances: string[],
+  resolver: AliasResolver
+): Promise<AEMInstance[]> {
+  const resolvedInstances: AEMInstance[] = [];
+
+  for (const instance of instances) {
+    // Try to parse as URL (direct instance)
+    try {
+      new URL(instance);
+      // If it's a valid URL, treat as direct instance - but we need credentials
+      // For now, assume it's an alias if it's just a string
+      const result = await resolver.resolveAlias(instance);
+      if (result.resolved) {
+        resolvedInstances.push(...result.instances);
+      }
+    } catch {
+      // Not a valid URL, treat as alias
+      const result = await resolver.resolveAlias(instance);
+      if (result.resolved) {
+        resolvedInstances.push(...result.instances);
+      }
+    }
+  }
+
+  return resolvedInstances;
+}
 
 export async function handleUserProvisioning(
   args: unknown, 
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = UserProvisioningRequestSchema.parse(args) as UserProvisioningRequest;
     const userService = new UserManagementService(httpClient, parallelExecutor);
-    
-    const instances = await aliasResolver.resolveInstances(request.instances);
+
+    const instances = await resolveInstances(request.instances, aliasResolver);
     const results: Record<string, UserOperationResult[]> = {};
 
-    const operations = instances.map(instance => ({
+    const operations = instances.map((instance: AEMInstance) => ({
       key: instance.url,
       operation: async () => {
         const userResults: UserOperationResult[] = [];
@@ -54,9 +82,9 @@ export async function handleUserProvisioning(
     }));
 
     const parallelResults = await parallelExecutor.executeInParallel(operations);
-    
+
     for (const [instanceUrl, userResults] of Object.entries(parallelResults)) {
-      results[instanceUrl] = userResults;
+      results[instanceUrl] = userResults as UserOperationResult[];
     }
 
     const totalUsers = Object.values(results).flat().length;
@@ -108,15 +136,15 @@ export async function handleUserDeprovisioning(
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = UserDeprovisioningRequestSchema.parse(args) as UserDeprovisioningRequest;
     const userService = new UserManagementService(httpClient, parallelExecutor);
-    
-    const instances = await aliasResolver.resolveInstances(request.instances);
+
+    const instances = await resolveInstances(request.instances, aliasResolver);
     const results: Record<string, UserOperationResult[]> = {};
 
-    const operations = instances.map(instance => ({
+    const operations = instances.map((instance: AEMInstance) => ({
       key: instance.url,
       operation: async () => {
         const userResults: UserOperationResult[] = [];
@@ -133,9 +161,9 @@ export async function handleUserDeprovisioning(
     }));
 
     const parallelResults = await parallelExecutor.executeInParallel(operations);
-    
+
     for (const [instanceUrl, userResults] of Object.entries(parallelResults)) {
-      results[instanceUrl] = userResults;
+      results[instanceUrl] = userResults as UserOperationResult[];
     }
 
     const totalUsers = Object.values(results).flat().length;
@@ -189,15 +217,15 @@ export async function handlePasswordReset(
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = PasswordResetRequestSchema.parse(args) as PasswordResetRequest;
     const userService = new UserManagementService(httpClient, parallelExecutor);
-    
-    const instances = await aliasResolver.resolveInstances(request.instances);
+
+    const instances = await resolveInstances(request.instances, aliasResolver);
     const results: Record<string, PasswordResetResult[]> = {};
 
-    const operations = instances.map(instance => ({
+    const operations = instances.map((instance: AEMInstance) => ({
       key: instance.url,
       operation: async () => {
         const resetResults: PasswordResetResult[] = [];
@@ -222,9 +250,9 @@ export async function handlePasswordReset(
     }));
 
     const parallelResults = await parallelExecutor.executeInParallel(operations);
-    
+
     for (const [instanceUrl, resetResults] of Object.entries(parallelResults)) {
-      results[instanceUrl] = resetResults;
+      results[instanceUrl] = resetResults as PasswordResetResult[];
     }
 
     const totalResets = Object.values(results).flat().length;
@@ -277,15 +305,15 @@ export async function handleBulkUserUpdate(
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = BulkUserUpdateRequestSchema.parse(args) as BulkUserUpdateRequest;
     const userService = new UserManagementService(httpClient, parallelExecutor);
-    
-    const instances = await aliasResolver.resolveInstances(request.instances);
+
+    const instances = await resolveInstances(request.instances, aliasResolver);
     const results: Record<string, UserOperationResult[]> = {};
 
-    const operations = instances.map(instance => ({
+    const operations = instances.map((instance: AEMInstance) => ({
       key: instance.url,
       operation: async () => {
         const updateResults: UserOperationResult[] = [];
@@ -300,9 +328,9 @@ export async function handleBulkUserUpdate(
     }));
 
     const parallelResults = await parallelExecutor.executeInParallel(operations);
-    
+
     for (const [instanceUrl, updateResults] of Object.entries(parallelResults)) {
-      results[instanceUrl] = updateResults;
+      results[instanceUrl] = updateResults as UserOperationResult[];
     }
 
     const totalUpdates = Object.values(results).flat().length;

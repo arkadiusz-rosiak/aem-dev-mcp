@@ -3,36 +3,64 @@ import { AliasResolver } from '@/services/alias-resolver.js';
 import { ParallelExecutor } from '@/services/parallel-executor.js';
 import { AemHttpClient } from '@/services/http-client.js';
 import { TrustStoreService } from '@/services/trust-store.service.js';
-import { 
-  TrustStoreListRequestSchema, 
+import {
+  TrustStoreListRequestSchema,
   TrustStoreExportRequestSchema
 } from '@/schemas/security.schemas.js';
-import { 
-  TrustStoreListRequest, 
+import {
+  TrustStoreListRequest,
   TrustStoreExportRequest,
   TrustStoreCertificateResult,
   TrustStoreExportResult
 } from '@/types/security.types.js';
-import { McpToolResponse } from '@/types/mcp.types.js';
+import { MCPToolResult, AEMInstance } from '@/types/index.js';
 import { getDefaultLogger } from '@/utils/logger.js';
 import { extractErrorMessage } from '@/utils/errors.js';
 
 const logger = getDefaultLogger();
+
+async function resolveInstances(
+  instances: string[],
+  resolver: AliasResolver
+): Promise<AEMInstance[]> {
+  const resolvedInstances: AEMInstance[] = [];
+
+  for (const instance of instances) {
+    // Try to parse as URL (direct instance)
+    try {
+      new URL(instance);
+      // If it's a valid URL, treat as direct instance - but we need credentials
+      // For now, assume it's an alias if it's just a string
+      const result = await resolver.resolveAlias(instance);
+      if (result.resolved) {
+        resolvedInstances.push(...result.instances);
+      }
+    } catch {
+      // Not a valid URL, treat as alias
+      const result = await resolver.resolveAlias(instance);
+      if (result.resolved) {
+        resolvedInstances.push(...result.instances);
+      }
+    }
+  }
+
+  return resolvedInstances;
+}
 
 export async function handleTrustStoreList(
   args: unknown, 
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = TrustStoreListRequestSchema.parse(args) as TrustStoreListRequest;
     const trustStoreService = new TrustStoreService(httpClient, parallelExecutor);
-    
-    const instances = await aliasResolver.resolveInstances(request.instances);
+
+    const instances = await resolveInstances(request.instances, aliasResolver);
     const results: Record<string, TrustStoreCertificateResult> = {};
 
-    const operations = instances.map(instance => ({
+    const operations = instances.map((instance: AEMInstance) => ({
       key: instance.url,
       operation: async () => {
         return trustStoreService.listTrustedCertificates(instance, request.aliasFilter);
@@ -40,9 +68,9 @@ export async function handleTrustStoreList(
     }));
 
     const parallelResults = await parallelExecutor.executeInParallel(operations);
-    
+
     for (const [instanceUrl, certificateResult] of Object.entries(parallelResults)) {
-      results[instanceUrl] = certificateResult;
+      results[instanceUrl] = certificateResult as TrustStoreCertificateResult;
     }
 
     const totalCertificates = Object.values(results)
@@ -96,15 +124,15 @@ export async function handleTrustStoreExport(
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = TrustStoreExportRequestSchema.parse(args) as TrustStoreExportRequest;
     const trustStoreService = new TrustStoreService(httpClient, parallelExecutor);
-    
-    const instances = await aliasResolver.resolveInstances(request.instances);
+
+    const instances = await resolveInstances(request.instances, aliasResolver);
     const results: Record<string, TrustStoreExportResult[]> = {};
 
-    const operations = instances.map(instance => ({
+    const operations = instances.map((instance: AEMInstance) => ({
       key: instance.url,
       operation: async () => {
         return trustStoreService.exportCertificates(instance, request.aliases, request.format);
@@ -112,9 +140,9 @@ export async function handleTrustStoreExport(
     }));
 
     const parallelResults = await parallelExecutor.executeInParallel(operations);
-    
+
     for (const [instanceUrl, exportResults] of Object.entries(parallelResults)) {
-      results[instanceUrl] = exportResults;
+      results[instanceUrl] = exportResults as TrustStoreExportResult[];
     }
 
     const totalExports = Object.values(results).flat().length;
@@ -168,7 +196,7 @@ export async function handleTrustStoreSync(
   aliasResolver: AliasResolver, 
   parallelExecutor: ParallelExecutor, 
   httpClient: AemHttpClient
-): Promise<McpToolResponse> {
+): Promise<MCPToolResult> {
   try {
     const request = z.object({
       sourceInstance: z.string(),
@@ -177,9 +205,9 @@ export async function handleTrustStoreSync(
     }).parse(args);
     
     const trustStoreService = new TrustStoreService(httpClient, parallelExecutor);
-    
-    const sourceInstances = await aliasResolver.resolveInstances([request.sourceInstance]);
-    const targetInstances = await aliasResolver.resolveInstances(request.targetInstances);
+
+    const sourceInstances = await resolveInstances([request.sourceInstance], aliasResolver);
+    const targetInstances = await resolveInstances(request.targetInstances, aliasResolver);
     
     if (sourceInstances.length === 0) {
       throw new Error('Source instance not found');

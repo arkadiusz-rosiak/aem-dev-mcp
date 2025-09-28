@@ -37,7 +37,7 @@ const ACLEntrySchema = z.object({
   path: z.string().min(1, 'Path is required').startsWith('/', 'Path must start with /'),
   privileges: z.array(PrivilegeSchema).min(1, 'At least one privilege is required'),
   allow: z.boolean(),
-  restrictions: z.record(z.string()).optional(),
+  restrictions: z.record(z.string(), z.string()).optional(),
   inheritance: z.enum(['allow', 'deny', 'break']).optional()
 });
 
@@ -50,10 +50,13 @@ const PasswordPolicySchema = z.object({
   requireSpecialChars: z.boolean(),
   specialChars: z.string(),
   forbiddenWords: z.array(z.string())
-}).refine(data => data.minLength <= data.maxLength, {
-  message: 'Minimum length cannot be greater than maximum length',
-  path: ['minLength']
-});
+}).refine(
+  (data) => data.minLength <= data.maxLength,
+  {
+    message: 'Minimum length cannot be greater than maximum length',
+    path: ['minLength']
+  }
+);
 
 const UserProvisioningRequestSchema = z.object({
   instances: z.array(z.string()).min(1, 'At least one instance is required'),
