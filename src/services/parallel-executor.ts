@@ -34,6 +34,30 @@ export class ParallelExecutor {
       }
     });
   }
+
+  async executeInParallel<T>(
+    operations: Array<{ key: string; operation: () => Promise<T> }>
+  ): Promise<Record<string, T>> {
+    const promises = operations.map(async ({ key, operation }) => {
+      try {
+        const result = await operation();
+        return { key, result };
+      } catch (error) {
+        throw new Error(`Operation failed for key ${key}: ${extractErrorMessage(error)}`);
+      }
+    });
+
+    const results = await Promise.allSettled(promises);
+    const successfulResults: Record<string, T> = {};
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        successfulResults[result.value.key] = result.value.result;
+      }
+    }
+
+    return successfulResults;
+  }
   
   private async executeOperation<T>(
     instance: AEMInstance,

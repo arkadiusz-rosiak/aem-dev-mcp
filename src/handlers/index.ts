@@ -45,7 +45,33 @@ import {
   configurationDeleteTool,
   configurationUnbindTool
 } from './configuration-management.js';
-import { 
+import {
+  handleUserProvisioning,
+  handleUserDeprovisioning,
+  handlePasswordReset,
+  handleBulkUserUpdate,
+  userProvisioningTool,
+  userDeprovisioningTool,
+  passwordResetTool,
+  bulkUserUpdateTool
+} from './user-management.js';
+import {
+  handleGroupSync,
+  handlePermissionGrant,
+  handleMembershipUpdate,
+  groupSyncTool,
+  permissionGrantTool,
+  membershipUpdateTool
+} from './group-management.js';
+import {
+  handleTrustStoreList,
+  handleTrustStoreExport,
+  handleTrustStoreSync,
+  trustStoreListTool,
+  trustStoreExportTool,
+  trustStoreSyncTool
+} from './trust-store-management.js';
+import {
   handleAemLogsSearch,
   aemLogsSearchTool
 } from './aem-logs.handler.js';
@@ -80,6 +106,16 @@ export function registerHandlers(server: Server, configPath: string): void {
         configurationUpdateTool,
         configurationDeleteTool,
         configurationUnbindTool,
+        userProvisioningTool,
+        userDeprovisioningTool,
+        passwordResetTool,
+        bulkUserUpdateTool,
+        groupSyncTool,
+        permissionGrantTool,
+        membershipUpdateTool,
+        trustStoreListTool,
+        trustStoreExportTool,
+        trustStoreSyncTool,
         aemLogsSearchTool
       ]
     };
@@ -148,6 +184,36 @@ export function registerHandlers(server: Server, configPath: string): void {
           break;
         case 'aem_configuration_unbind':
           result = await handleConfigurationUnbind(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_user_provisioning':
+          result = await handleUserProvisioning(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_user_deprovisioning':
+          result = await handleUserDeprovisioning(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_password_reset':
+          result = await handlePasswordReset(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_bulk_user_update':
+          result = await handleBulkUserUpdate(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_group_sync':
+          result = await handleGroupSync(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_permission_grant':
+          result = await handlePermissionGrant(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_membership_update':
+          result = await handleMembershipUpdate(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_trust_store_list':
+          result = await handleTrustStoreList(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_trust_store_export':
+          result = await handleTrustStoreExport(args, aliasResolver, parallelExecutor, httpClient);
+          break;
+        case 'aem_trust_store_sync':
+          result = await handleTrustStoreSync(args, aliasResolver, parallelExecutor, httpClient);
           break;
         case 'aem_logs_search':
           result = await handleAemLogsSearch(args, aliasResolver, parallelExecutor, httpClient);

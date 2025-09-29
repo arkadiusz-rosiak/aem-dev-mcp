@@ -151,6 +151,47 @@ export class AemHttpClient {
     });
   }
   
+  async get(
+    url: string, 
+    credentials: { username: string; password: string },
+    timeout?: number
+  ): Promise<AxiosResponse> {
+    const instance: AEMInstance = {
+      url: this.extractBaseUrl(url),
+      username: credentials.username,
+      password: credentials.password
+    };
+    
+    const path = this.extractPath(url);
+    return this.makeRequest(instance, path, 'GET', undefined, timeout);
+  }
+
+  async postForm(
+    url: string, 
+    data: URLSearchParams,
+    credentials: { username: string; password: string },
+    timeout?: number
+  ): Promise<AxiosResponse> {
+    const instance: AEMInstance = {
+      url: this.extractBaseUrl(url),
+      username: credentials.username,
+      password: credentials.password
+    };
+    
+    const path = this.extractPath(url);
+    return this.makeRequest(instance, path, 'POST', data, timeout);
+  }
+
+  private extractBaseUrl(fullUrl: string): string {
+    const url = new URL(fullUrl);
+    return `${url.protocol}//${url.host}`;
+  }
+
+  private extractPath(fullUrl: string): string {
+    const url = new URL(fullUrl);
+    return url.pathname + url.search;
+  }
+
   async cleanup(): Promise<void> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
